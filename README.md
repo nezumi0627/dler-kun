@@ -29,13 +29,9 @@ python -m venv .venv
 .\.venv\Scripts\python -m pip install -e .[dev,web]
 ```
 
-既存プロジェクトはデフォルトで次の場所を参照します。
+既存プロジェクトの処理は `src/dler_kun/vendor/` に取り込み済みです。通常利用では `E:\projects\dl`、`E:\projects\gofile-downloader`、`E:\projects\85-xo` は不要です。
 
-- `E:\projects\dl`
-- `E:\projects\gofile-downloader`
-- `E:\projects\85-xo`
-
-別の場所に置く場合は `config.json` または環境変数で変更します。
+開発時だけ外部実装を一時的に試す場合は、`config.json` または環境変数 `DLER_DL_PATH`、`DLER_GOFILE_PATH`、`DLER_85XO_PATH` で上書きできます。
 
 ## CLI
 

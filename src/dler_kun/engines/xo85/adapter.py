@@ -21,9 +21,13 @@ class Xo85Engine(IDownloader):
     display_name = "85xo Engine"
     capabilities = EngineCapability(download=True, crawl=True, ranking=False)
 
-    def __init__(self, project_path: str | Path) -> None:
-        self.project_path = Path(project_path)
-        self.lib_path = self.project_path / "lib"
+    def __init__(self, project_path: str | Path | None = None) -> None:
+        self.project_path = (
+            Path(project_path)
+            if project_path
+            else Path(__file__).resolve().parents[2] / "vendor" / "xo85"
+        )
+        self.lib_path = self.project_path
 
     def detect(self, url: str) -> bool:
         return "85xo.com" in url.lower()

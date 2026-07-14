@@ -31,11 +31,9 @@ class ConfigManager:
             "cookie": "",
             "user_agent": "",
             "engine_paths": {
-                "dl": os.environ.get("DLER_DL_PATH", r"E:\projects\dl"),
-                "gofile": os.environ.get(
-                    "DLER_GOFILE_PATH", r"E:\projects\gofile-downloader"
-                ),
-                "85xo": os.environ.get("DLER_85XO_PATH", r"E:\projects\85-xo"),
+                "dl": os.environ.get("DLER_DL_PATH", ""),
+                "gofile": os.environ.get("DLER_GOFILE_PATH", ""),
+                "85xo": os.environ.get("DLER_85XO_PATH", ""),
             },
             "85xo": {
                 "default_seed": "https://www.85xo.com/latest-updates/",

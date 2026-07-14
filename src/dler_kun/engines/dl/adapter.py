@@ -20,9 +20,18 @@ class DlEngine(IDownloader):
     display_name = "DL Engine"
     capabilities = EngineCapability(download=True, crawl=False, ranking=False)
 
-    def __init__(self, project_path: str | Path) -> None:
-        self.project_path = Path(project_path)
-        self.script_path = self.project_path / "download_twitter_media.py"
+    def __init__(self, project_path: str | Path | None = None) -> None:
+        if project_path:
+            self.project_path = Path(project_path)
+            self.script_path = self.project_path / "download_twitter_media.py"
+        else:
+            self.script_path = (
+                Path(__file__).resolve().parents[2]
+                / "vendor"
+                / "dl"
+                / "download_twitter_media.py"
+            )
+            self.project_path = self.script_path.parent
 
     def detect(self, url: str) -> bool:
         lowered = url.lower()

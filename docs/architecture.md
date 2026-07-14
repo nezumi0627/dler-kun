@@ -33,7 +33,7 @@ src/dler_kun/engines/
   85xo/
 ```
 
-Engine adapters may add paths to `sys.path` or execute existing CLIs, but they must not change downloader internals.
+Engine adapters use vendored engine code from `src/dler_kun/vendor/` by default. They may add those internal paths to `sys.path` or execute vendored CLIs, but they must not rewrite downloader internals unless explicitly planned.
 
 ## URL Detection
 

@@ -8,13 +8,15 @@
 
 Do not rewrite existing downloader internals.
 
-Existing projects are trusted source assets:
+The original local projects are source references only:
 
 - `E:\projects\dl`
 - `E:\projects\gofile-downloader`
 - `E:\projects\85-xo`
 
-Use Adapter, Facade, Wrapper, or subprocess boundaries from `dler-kun`. If a change appears necessary inside an existing project, document the reason first and prefer a wrapper-side workaround.
+Runtime code must use the vendored copies under `src/dler_kun/vendor/` by default. External paths are only for temporary development overrides.
+
+Use Adapter, Facade, Wrapper, or subprocess boundaries inside `dler-kun`. If a change appears necessary in vendored engine logic, document the reason first and prefer a wrapper-side workaround.
 
 ## Architecture Rules
 

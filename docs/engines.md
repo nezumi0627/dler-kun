@@ -2,7 +2,7 @@
 
 ## `dl`
 
-Source project: `E:\projects\dl`
+Vendored source: `src/dler_kun/vendor/dl/download_twitter_media.py`
 
 Supported URL patterns:
 
@@ -22,7 +22,7 @@ Integration choice:
 
 ## `gofile`
 
-Source project: `E:\projects\gofile-downloader`
+Vendored source: `src/dler_kun/vendor/gofile/`
 
 Supported URL patterns:
 
@@ -45,7 +45,7 @@ Integration choice:
 
 ## `85xo`
 
-Source project: `E:\projects\85-xo`
+Vendored source: `src/dler_kun/vendor/xo85/`
 
 Supported URL patterns:
 
@@ -62,7 +62,7 @@ Integration choice:
 
 - Default to the `fast` adapter path in `dler-kun`: parse listing dates and video-page `get_file` links over HTTP, then pass normalized media items to the existing `download_items` saver.
 - Keep the original `xo_dler.crawl_once` browser/network crawler available with `--method legacy`.
-- Do not modify the source project in `E:\projects\85-xo`.
+- Do not require the source project in `E:\projects\85-xo` at runtime.
 
 Important limitation:
 

@@ -42,14 +42,14 @@ class DlerKunApp:
 
     def _register_engines(self) -> None:
         engine_paths = self.config.get("engine_paths", {})
-        self.factory.register(DlEngine(engine_paths.get("dl", r"E:\projects\dl")))
+        self.factory.register(DlEngine(engine_paths.get("dl") or None))
         self.factory.register(
             GoFileEngine(
-                engine_paths.get("gofile", r"E:\projects\gofile-downloader"),
+                engine_paths.get("gofile") or None,
                 proxy=self.proxy.get_proxy(),
             )
         )
-        self.factory.register(Xo85Engine(engine_paths.get("85xo", r"E:\projects\85-xo")))
+        self.factory.register(Xo85Engine(engine_paths.get("85xo") or None))
 
     def detect(self, url: str) -> dict[str, Any]:
         engine_id = self.detector.detect(url)

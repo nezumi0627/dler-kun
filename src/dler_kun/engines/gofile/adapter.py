@@ -20,8 +20,12 @@ class GoFileEngine(IDownloader):
     display_name = "GoFile Engine"
     capabilities = EngineCapability(download=True, crawl=True, ranking=True)
 
-    def __init__(self, project_path: str | Path, proxy: str = "") -> None:
-        self.project_path = Path(project_path)
+    def __init__(self, project_path: str | Path | None = None, proxy: str = "") -> None:
+        self.project_path = (
+            Path(project_path)
+            if project_path
+            else Path(__file__).resolve().parents[2] / "vendor" / "gofile"
+        )
         self.proxy = proxy or None
 
     def detect(self, url: str) -> bool:
