@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+venv/
+
+# Node / UI tooling
+node_modules/
+dist/
+build/
+.vite/
+
+# App runtime data
+config.json
+history.json
+downloads/
+logs/
+*.db
+*.db-*
+*.part
+*.tmp
+
+# Secrets / service state
+.env
+.env.*
+tokens.json
+cookies.json
+*.har
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+!.vscode/extensions.json

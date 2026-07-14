@@ -1,0 +1,34 @@
+[project]
+name = "dler-kun"
+version = "0.1.0"
+description = "Unified downloader platform for existing downloader engines."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [{ name = "nezumi0627" }]
+dependencies = []
+
+[project.optional-dependencies]
+web = []
+gofile = [
+    "aiofiles>=25.1.0",
+    "aiohttp>=3.14.0",
+    "rich>=13.0.0",
+    "aiohttp-socks>=0.10.0",
+]
+dev = [
+    "pytest>=8.0.0",
+]
+
+[project.scripts]
+dler-kun = "dler_kun.__main__:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/dler_kun"]

@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>dler-kun</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <span class="brand-mark">D</span>
+          <div>
+            <strong>dler-kun</strong>
+            <small>Unified Downloader</small>
+          </div>
+        </div>
+        <nav id="nav"></nav>
+      </aside>
+
+      <main class="main">
+        <section class="active-strip">
+          <div>
+            <span class="eyebrow">Active Task</span>
+            <strong id="active-task">Idle</strong>
+          </div>
+          <div class="strip-metrics">
+            <span><b id="metric-running">0</b> running</span>
+            <span><b id="metric-queued">0</b> queued</span>
+            <span><b id="metric-done">0</b> done</span>
+            <span><b id="metric-failed">0</b> failed</span>
+          </div>
+        </section>
+
+        <section id="page"></section>
+
+        <section class="log-panel">
+          <button id="toggle-log" class="ghost">Log</button>
+          <div id="log-list"></div>
+        </section>
+      </main>
+    </div>
+    <script src="/app.js"></script>
+  </body>
+</html>
