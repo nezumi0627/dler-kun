@@ -52,6 +52,8 @@ class Xo85Engine(IDownloader):
     def crawl(self, request: CrawlRequest) -> CrawlResult:
         try:
             self._ensure_path()
+            if request.options.get("method", "fast") != "legacy":
+                return self._crawl_fast(request)
             from xo_dler import CrawlConfig, DownloadConfig, crawl_once, download_items
 
             seeds = request.seeds or [request.options.get("seed") or "https://www.85xo.com/latest-updates/"]
@@ -101,6 +103,37 @@ class Xo85Engine(IDownloader):
                 message=str(exc),
                 errors=["crawl_failed"],
             )
+
+    def _crawl_fast(self, request: CrawlRequest) -> CrawlResult:
+        from xo_dler import DownloadConfig, download_items
+
+        from .fast import crawl_fast, to_existing_media_items
+
+        seeds = request.seeds or [request.options.get("seed") or "https://www.85xo.com/latest-updates/"]
+        fast_items = crawl_fast(
+            seeds=[str(seed) for seed in seeds],
+            days=request.days,
+            max_pages=int(request.options.get("max_pages", 50)),
+            timeout_seconds=float(request.options.get("timeout_seconds", 30.0)),
+        )
+        media_items = to_existing_media_items(fast_items, self.project_path)
+        crawl_items = [self._to_crawl_item(item) for item in media_items]
+        files: list[str] = []
+        if request.download and media_items:
+            download_config = DownloadConfig(
+                output_dir=request.output_dir,
+                skip_existing=not bool(request.options.get("overwrite", False)),
+            )
+            files = [str(path) for path in download_items(media_items, download_config)]
+        return CrawlResult(
+            job_id=request.job_id,
+            engine_id=self.engine_id,
+            status=JobStatus.SUCCESS,
+            message=f"85xo fast crawl completed: {len(crawl_items)} item(s).",
+            items=crawl_items,
+            files=files,
+            metadata={"download": request.download, "method": "fast"},
+        )
 
     def _ensure_path(self) -> None:
         lib = str(self.lib_path)

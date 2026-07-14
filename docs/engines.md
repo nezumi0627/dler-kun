@@ -60,9 +60,11 @@ Primary existing entries:
 
 Integration choice:
 
-- Import `xo_dler` from the existing `lib` directory and call `crawl_once` / `download_items`.
-- Do not add a new crawler algorithm.
+- Default to the `fast` adapter path in `dler-kun`: parse listing dates and video-page `get_file` links over HTTP, then pass normalized media items to the existing `download_items` saver.
+- Keep the original `xo_dler.crawl_once` browser/network crawler available with `--method legacy`.
+- Do not modify the source project in `E:\projects\85-xo`.
 
 Important limitation:
 
-- The 10-day filter depends mainly on media `Last-Modified` data. Undated items are excluded unless explicitly included.
+- `fast` mode depends on listing date text and video-page `uploadDate` / `get_file` HTML.
+- `legacy` mode depends mainly on media `Last-Modified` data. Undated items are excluded unless explicitly included.

@@ -38,6 +38,7 @@ def build_parser() -> argparse.ArgumentParser:
     crawl.add_argument("--browser-path")
     crawl.add_argument("--include-undated", action="store_true")
     crawl.add_argument("--overwrite", action="store_true")
+    crawl.add_argument("--method", choices=["fast", "legacy"], default="fast")
 
     web = sub.add_parser("web", help="Run local Web UI")
     web.add_argument("--host", default="127.0.0.1")
@@ -89,6 +90,7 @@ def main() -> None:
                 "browser_path",
                 "include_undated",
                 "overwrite",
+                "method",
             }
             and value not in (None, False, "")
         }

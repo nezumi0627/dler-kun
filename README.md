@@ -46,8 +46,8 @@ python -m dler_kun download https://gofile.io/d/example
 # 複数URL一括投入
 python -m dler_kun download https://tweetfile.com/example https://gofile.io/d/example
 
-# 85xoを10日前までクロールしてダウンロード
-python -m dler_kun crawl 85xo --days 10 --download
+# 85xoを10日前まで高速クロールしてダウンロード
+python -m dler_kun crawl 85xo --days 10 --download --method fast
 
 # Web UI
 python -m dler_kun web
@@ -77,7 +77,13 @@ python -m dler_kun detect https://gofile.io/d/example
 完成確認後の実行コマンド:
 
 ```powershell
-python -m dler_kun crawl 85xo --days 10 --download --output-dir downloads/85xo
+python -m dler_kun crawl 85xo --days 10 --download --output-dir downloads/85xo --method fast
 ```
 
-85xo の既存仕様により、日付判定は主に動画レスポンスの `Last-Modified` に依存します。日付不明の動画は既定では除外されます。
+85xo の既定は高速方式です。一覧ページの日付で10日以内の候補を絞り、動画ページHTML内の `get_file` URL から最高 `br` の mp4 を選び、保存処理は既存 `download_items()` に渡します。
+
+従来の headless Chrome ネットワークキャプチャ方式に戻す場合:
+
+```powershell
+python -m dler_kun crawl 85xo --days 10 --download --method legacy
+```
