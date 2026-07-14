@@ -43,7 +43,7 @@ python -m dler_kun download https://gofile.io/d/example
 python -m dler_kun download https://tweetfile.com/example https://gofile.io/d/example
 
 # 85xoを10日前まで高速クロールしてダウンロード
-python -m dler_kun crawl 85xo --days 10 --download --method fast
+python -m dler_kun crawl 85xo --days 10 --download --method fast --parallel-downloads 4
 
 # Web UI
 python -m dler_kun web
@@ -73,10 +73,10 @@ python -m dler_kun detect https://gofile.io/d/example
 完成確認後の実行コマンド:
 
 ```powershell
-python -m dler_kun crawl 85xo --days 10 --download --output-dir downloads/85xo --method fast
+python -m dler_kun crawl 85xo --days 10 --download --output-dir downloads/85xo --method fast --parallel-downloads 4
 ```
 
-85xo の既定は高速方式です。一覧ページの日付で10日以内の候補を絞り、動画ページHTML内の `get_file` URL から最高 `br` の mp4 を選び、保存処理は既存 `download_items()` に渡します。
+85xo の既定は高速方式です。一覧ページの日付で10日以内の候補を絞り、動画ページHTML内の `get_file` URL から最高 `br` の mp4 を選び、保存処理は vendored 85xo downloader の保存関数へ渡します。`--parallel-downloads` で同時ダウンロード数を指定できます。
 
 従来の headless Chrome ネットワークキャプチャ方式に戻す場合:
 

@@ -109,9 +109,13 @@ class Xo85Engine(IDownloader):
             )
 
     def _crawl_fast(self, request: CrawlRequest) -> CrawlResult:
-        from xo_dler import DownloadConfig, download_items
+        from xo_dler import DownloadConfig
 
-        from .fast import crawl_fast, to_existing_media_items
+        from .fast import (
+            crawl_fast,
+            download_existing_items_parallel,
+            to_existing_media_items,
+        )
 
         seeds = request.seeds or [request.options.get("seed") or "https://www.85xo.com/latest-updates/"]
         fast_items = crawl_fast(
@@ -128,7 +132,14 @@ class Xo85Engine(IDownloader):
                 output_dir=request.output_dir,
                 skip_existing=not bool(request.options.get("overwrite", False)),
             )
-            files = [str(path) for path in download_items(media_items, download_config)]
+            files = [
+                str(path)
+                for path in download_existing_items_parallel(
+                    media_items,
+                    download_config,
+                    max_workers=int(request.options.get("parallel_downloads", 4)),
+                )
+            ]
         return CrawlResult(
             job_id=request.job_id,
             engine_id=self.engine_id,

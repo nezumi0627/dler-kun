@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from html import unescape
@@ -251,6 +252,41 @@ def to_existing_media_items(items: Iterable[FastMediaItem], project_path: Path):
         )
         for item in items
     ]
+
+
+def download_existing_items_parallel(items: list, config, max_workers: int = 4) -> list[Path]:
+    from xo_dler.downloader import download_file, target_path, unique_target_path, write_metadata
+
+    config.output_dir.mkdir(parents=True, exist_ok=True)
+    max_workers = max(1, max_workers)
+    downloaded: list[Path] = []
+    tasks = []
+
+    for item in items:
+        target = target_path(config.output_dir, item)
+        if target.exists() and config.skip_existing:
+            print(f"[skip] exists: {target}")
+            downloaded.append(target)
+            continue
+        if target.exists():
+            target = unique_target_path(target)
+        tasks.append((item, target))
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {
+            executor.submit(download_file, item, target, config): (item, target)
+            for item, target in tasks
+        }
+        for future in as_completed(futures):
+            item, target = futures[future]
+            try:
+                if future.result():
+                    write_metadata(target, item)
+                    downloaded.append(target)
+            except Exception as exc:  # noqa: BLE001 - keep long crawl moving.
+                print(f"[warn] download worker failed: {getattr(item, 'url', '')} ({exc})")
+
+    return downloaded
 
 
 def match_group(pattern: re.Pattern[str], text: str, group: str) -> str | None:

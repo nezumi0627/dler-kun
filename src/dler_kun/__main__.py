@@ -39,6 +39,7 @@ def build_parser() -> argparse.ArgumentParser:
     crawl.add_argument("--include-undated", action="store_true")
     crawl.add_argument("--overwrite", action="store_true")
     crawl.add_argument("--method", choices=["fast", "legacy"], default="fast")
+    crawl.add_argument("--parallel-downloads", type=int, default=4)
 
     web = sub.add_parser("web", help="Run local Web UI")
     web.add_argument("--host", default="127.0.0.1")
@@ -91,6 +92,7 @@ def main() -> None:
                 "include_undated",
                 "overwrite",
                 "method",
+                "parallel_downloads",
             }
             and value not in (None, False, "")
         }
