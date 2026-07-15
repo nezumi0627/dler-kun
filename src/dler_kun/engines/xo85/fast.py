@@ -32,10 +32,14 @@ CARD_RE = re.compile(
 HREF_RE = re.compile(r'href="(?P<href>[^"]*/v/\d+/[^"]*)"')
 TITLE_RE = re.compile(r'title="(?P<title>[^"]*)"')
 THUMB_RE = re.compile(r'data-(?:original|webp)="(?P<thumb>https?://[^"]+)"')
-DATE_RE = re.compile(r'thumb-item-date.*?</i>\s*(?P<date>[^<]+)</div>', re.S)
-DURATION_RE = re.compile(r'<div class="time"><span[^>]*></span>\s*(?P<duration>[^<]+)</div>', re.S)
+DATE_RE = re.compile(r"thumb-item-date.*?</i>\s*(?P<date>[^<]+)</div>", re.S)
+DURATION_RE = re.compile(
+    r'<div class="time"><span[^>]*></span>\s*(?P<duration>[^<]+)</div>', re.S
+)
 GET_FILE_RE = re.compile(r'https?://[^"\'<>\s]+/get_file/[^"\'<>\s]+?\.mp4[^"\'<>\s]*')
-LD_JSON_RE = re.compile(r'<script type="application/ld\+json">\s*(?P<json>{.*?})\s*</script>', re.S)
+LD_JSON_RE = re.compile(
+    r'<script type="application/ld\+json">\s*(?P<json>{.*?})\s*</script>', re.S
+)
 UPLOAD_DATE_RE = re.compile(r'<meta itemprop="uploadDate" content="(?P<date>[^"]+)"')
 BR_RE = re.compile(r"[?&]br=(?P<br>\d+)")
 
@@ -68,7 +72,9 @@ def crawl_fast(
 ) -> list[FastMediaItem]:
     fetcher = fetcher or fetch_html
     now = now or datetime.now(timezone.utc)
-    candidates = discover_listing_items(seeds, days, max_pages, timeout_seconds, now, fetcher)
+    candidates = discover_listing_items(
+        seeds, days, max_pages, timeout_seconds, now, fetcher
+    )
     return resolve_media_items(candidates, timeout_seconds, fetcher, resolve_workers)
 
 
@@ -143,7 +149,9 @@ def discover_listing_items(
             print(f"[fast-scan] listing page {page_number}/{max_pages}: {page_url}")
             html = fetcher(page_url, timeout_seconds)
             items = parse_listing_items(html, page_url, now)
-            within = [item for item in items if is_within_days(item.published_at, days, now)]
+            within = [
+                item for item in items if is_within_days(item.published_at, days, now)
+            ]
             for item in within:
                 if item.page_url not in seen_pages:
                     seen_pages.add(item.page_url)
@@ -162,7 +170,9 @@ def discover_listing_items(
     return results
 
 
-def parse_listing_items(html: str, base_url: str, now: datetime) -> list[FastListingItem]:
+def parse_listing_items(
+    html: str, base_url: str, now: datetime
+) -> list[FastListingItem]:
     items: list[FastListingItem] = []
     for card in CARD_RE.findall(html):
         href = match_group(HREF_RE, card, "href")
@@ -176,7 +186,9 @@ def parse_listing_items(html: str, base_url: str, now: datetime) -> list[FastLis
                 title=" ".join(title.split()),
                 published_at=parse_published_at(date_text, now),
                 thumbnail_url=match_group(THUMB_RE, card, "thumb"),
-                duration=" ".join((match_group(DURATION_RE, card, "duration") or "").split())
+                duration=" ".join(
+                    (match_group(DURATION_RE, card, "duration") or "").split()
+                )
                 or None,
             )
         )
@@ -240,7 +252,9 @@ def parse_published_at(text: str, now: datetime) -> datetime | None:
             return now
         if "昨天" in normalized or "昨日" in normalized:
             return now - timedelta(days=1)
-        day_match = re.search(r"(?P<days>\d+)\s*(?:天前|日前|days?\s+ago)", normalized, re.I)
+        day_match = re.search(
+            r"(?P<days>\d+)\s*(?:天前|日前|days?\s+ago)", normalized, re.I
+        )
         if day_match:
             return now - timedelta(days=int(day_match.group("days")))
         week_match = re.search(
@@ -352,7 +366,9 @@ def download_existing_items_parallel(
         cache_key = cache_key_for_url(item.url)
         metadata_path = target.with_suffix(target.suffix + ".json")
         is_cached_complete = bool(cache and cache.is_complete(cache_key))
-        is_sidecar_complete = target.exists() and metadata_path.exists() and target.stat().st_size > 0
+        is_sidecar_complete = (
+            target.exists() and metadata_path.exists() and target.stat().st_size > 0
+        )
         if config.skip_existing and (is_cached_complete or is_sidecar_complete):
             print(f"[skip] exists: {target}")
             if cache:
@@ -391,14 +407,25 @@ def download_existing_items_parallel(
                 if future.result():
                     write_metadata(target, item)
                     if cache:
-                        cache.mark(cache_key, item.url, target, CacheStatus.COMPLETE, "85xo")
+                        cache.mark(
+                            cache_key, item.url, target, CacheStatus.COMPLETE, "85xo"
+                        )
                     downloaded.append(target)
                 elif cache:
                     cache.mark(cache_key, item.url, target, CacheStatus.FAILED, "85xo")
             except Exception as exc:  # noqa: BLE001 - keep long crawl moving.
-                print(f"[warn] download worker failed: {getattr(item, 'url', '')} ({exc})")
+                print(
+                    f"[warn] download worker failed: {getattr(item, 'url', '')} ({exc})"
+                )
                 if cache:
-                    cache.mark(cache_key, item.url, target, CacheStatus.FAILED, "85xo", str(exc))
+                    cache.mark(
+                        cache_key,
+                        item.url,
+                        target,
+                        CacheStatus.FAILED,
+                        "85xo",
+                        str(exc),
+                    )
             finally:
                 mark_completed(str(target))
 
@@ -429,7 +456,9 @@ def download_item_robust(
             if cache:
                 cache.mark(cache_key, item.url, part_path, CacheStatus.PARTIAL, "85xo")
             if use_curl:
-                download_with_curl(curl_path, item.url, part_path, headers, read_timeout_seconds)
+                download_with_curl(
+                    curl_path, item.url, part_path, headers, read_timeout_seconds
+                )
             else:
                 with requests.get(
                     item.url,
@@ -439,7 +468,9 @@ def download_item_robust(
                 ) as response:
                     response.raise_for_status()
                     with part_path.open("wb") as file:
-                        for chunk in response.iter_content(chunk_size=config.chunk_size):
+                        for chunk in response.iter_content(
+                            chunk_size=config.chunk_size
+                        ):
                             if chunk:
                                 file.write(chunk)
             if not part_path.exists() or part_path.stat().st_size <= 0:
@@ -449,10 +480,19 @@ def download_item_robust(
             return True
         except (OSError, requests.RequestException, subprocess.SubprocessError) as exc:
             last_error = exc
-            print(f"[warn] download attempt {attempt}/{attempts} failed: {item.url} ({exc})")
+            print(
+                f"[warn] download attempt {attempt}/{attempts} failed: {item.url} ({exc})"
+            )
             if should_keep_partial_after_failure(part_path, use_curl):
                 if cache:
-                    cache.mark(cache_key, item.url, part_path, CacheStatus.PARTIAL, "85xo", str(exc))
+                    cache.mark(
+                        cache_key,
+                        item.url,
+                        part_path,
+                        CacheStatus.PARTIAL,
+                        "85xo",
+                        str(exc),
+                    )
             else:
                 part_path.unlink(missing_ok=True)
 

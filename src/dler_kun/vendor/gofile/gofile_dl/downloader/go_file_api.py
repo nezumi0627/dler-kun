@@ -40,7 +40,7 @@ _WT_SEC_CH_UA_PLATFORM = '"Windows"'
 
 # ── rate limit 設定 ────────────────────────────────────────────────────────
 _ACCOUNTS_WEBSITE_RETRY_WAIT = 1.0
-_ACCOUNTS_WEBSITE_MAX_RETRY  = 2
+_ACCOUNTS_WEBSITE_MAX_RETRY = 2
 
 
 def _get_local_addr() -> Optional[str]:
@@ -220,9 +220,9 @@ class GoFileAPI:
         _RETRYABLE = {502, 503, 504}
         last_err: Optional[Exception] = None
 
-        for attempt in range(2):   # 最大 2 回試行 (0, 1)
+        for attempt in range(2):  # 最大 2 回試行 (0, 1)
             if attempt > 0:
-                wait = 1.0   # 1秒
+                wait = 1.0  # 1秒
                 await asyncio.sleep(wait)
 
             try:

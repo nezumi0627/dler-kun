@@ -61,7 +61,9 @@ def parse_published_at(text: str, now: datetime | None = None) -> datetime | Non
     return None
 
 
-def is_within_days(value: datetime | None, days: int, now: datetime | None = None) -> bool:
+def is_within_days(
+    value: datetime | None, days: int, now: datetime | None = None
+) -> bool:
     if value is None:
         return False
 

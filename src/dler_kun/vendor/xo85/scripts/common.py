@@ -23,10 +23,18 @@ def add_crawl_arguments(parser: argparse.ArgumentParser) -> None:
         type=Path,
         help="Text file containing one crawl start URL per line.",
     )
-    parser.add_argument("--days", type=int, default=10, help="Keep items from this many days back.")
-    parser.add_argument("--max-pages", type=int, default=50, help="Maximum pages to fetch per run.")
-    parser.add_argument("--max-depth", type=int, default=2, help="Maximum link depth from seeds.")
-    parser.add_argument("--delay-seconds", type=float, default=1.0, help="Delay between page fetches.")
+    parser.add_argument(
+        "--days", type=int, default=10, help="Keep items from this many days back."
+    )
+    parser.add_argument(
+        "--max-pages", type=int, default=50, help="Maximum pages to fetch per run."
+    )
+    parser.add_argument(
+        "--max-depth", type=int, default=2, help="Maximum link depth from seeds."
+    )
+    parser.add_argument(
+        "--delay-seconds", type=float, default=1.0, help="Delay between page fetches."
+    )
     parser.add_argument(
         "--network-capture-seconds",
         type=float,

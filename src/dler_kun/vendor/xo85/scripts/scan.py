@@ -8,7 +8,9 @@ from xo_dler import CrawlConfig, crawl_once  # type: ignore[reportMissingImports
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Scan pages and print downloadable media URLs.")
+    parser = argparse.ArgumentParser(
+        description="Scan pages and print downloadable media URLs."
+    )
     add_crawl_arguments(parser)
     args = parser.parse_args()
 
@@ -27,7 +29,9 @@ def main() -> None:
 
     print(f"found: {len(items)}")
     for item in items:
-        published = item.published_at.isoformat() if item.published_at else "unknown-date"
+        published = (
+            item.published_at.isoformat() if item.published_at else "unknown-date"
+        )
         print(f"{published}\t{item.url}")
 
 

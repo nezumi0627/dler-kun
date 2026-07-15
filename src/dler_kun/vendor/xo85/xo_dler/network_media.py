@@ -46,7 +46,9 @@ class NetworkCaptureConfig:
     browser_path: str | None = None
 
 
-def capture_video_ids(seed_url: str, config: NetworkCaptureConfig, page_count: int) -> list[str]:
+def capture_video_ids(
+    seed_url: str, config: NetworkCaptureConfig, page_count: int
+) -> list[str]:
     page_count = max(page_count, 1)
     browser_path = find_browser(config.browser_path)
     if browser_path is None:
@@ -62,7 +64,9 @@ def capture_video_ids(seed_url: str, config: NetworkCaptureConfig, page_count: i
             if ws_url is None:
                 print("[warn] browser debugging endpoint did not start")
                 return []
-            return capture_listing_video_ids(ws_url, seed_url, config.timeout_seconds, page_count)
+            return capture_listing_video_ids(
+                ws_url, seed_url, config.timeout_seconds, page_count
+            )
         finally:
             stop_browser(process)
 
@@ -137,7 +141,9 @@ def capture_listing_video_ids(
             client.call("Page.navigate", {"url": url})
             collect_listing_page_ids(client, video_ids, timeout_seconds)
             after_count = len(set(video_ids))
-            print(f"[scan] listing page {page_number}: +{after_count - before_count} videos (total {after_count})")
+            print(
+                f"[scan] listing page {page_number}: +{after_count - before_count} videos (total {after_count})"
+            )
             if after_count == before_count:
                 empty_pages += 1
                 if empty_pages >= 2:
@@ -198,7 +204,9 @@ def listing_page_url(seed_url: str, page_number: int) -> str:
     return parsed._replace(path=path, query="", fragment="").geturl()
 
 
-def capture_page_media(ws_url: str, page_url: str, timeout_seconds: float) -> list[MediaItem]:
+def capture_page_media(
+    ws_url: str, page_url: str, timeout_seconds: float
+) -> list[MediaItem]:
     media_candidates: dict[str, datetime | None] = {}
     video_candidates: dict[str, datetime | None] = {}
     deadline = time.monotonic() + timeout_seconds
@@ -228,27 +236,35 @@ def capture_page_media(ws_url: str, page_url: str, timeout_seconds: float) -> li
                 mime_type = response.get("mimeType", "")
                 if is_network_media_response(url, mime_type):
                     last_media_at = time.monotonic()
-                    published_at = published_at_from_headers(response.get("headers", {}))
+                    published_at = published_at_from_headers(
+                        response.get("headers", {})
+                    )
                     if "video/" in mime_type.lower():
                         video_candidates[url] = published_at
                     else:
                         media_candidates[url] = published_at
-                    redirect_url = response.get("headers", {}).get("location") or response.get("headers", {}).get(
-                        "Location"
-                    )
+                    redirect_url = response.get("headers", {}).get(
+                        "location"
+                    ) or response.get("headers", {}).get("Location")
                     if redirect_url and is_network_media_url(redirect_url):
                         media_candidates.setdefault(redirect_url, published_at)
 
             if not clicked_play and time.monotonic() + 3 < deadline:
                 clicked_play = True
                 click_viewport_center(client)
-            if video_candidates and time.monotonic() - last_media_at > 2 and time.monotonic() - last_event_at > 1:
+            if (
+                video_candidates
+                and time.monotonic() - last_media_at > 2
+                and time.monotonic() - last_event_at > 1
+            ):
                 break
 
     items = []
     candidates = video_candidates or media_candidates
     for url, published_at in candidates.items():
-        items.append(MediaItem(url=url, source_page=page_url, published_at=published_at))
+        items.append(
+            MediaItem(url=url, source_page=page_url, published_at=published_at)
+        )
     return items
 
 
@@ -295,7 +311,9 @@ def is_video_page_url(url: str) -> bool:
 
 def is_network_media_url(url: str) -> bool:
     lowered = url.lower()
-    return is_media_url(url) or any(marker in lowered for marker in NETWORK_MEDIA_MARKERS)
+    return is_media_url(url) or any(
+        marker in lowered for marker in NETWORK_MEDIA_MARKERS
+    )
 
 
 def is_network_media_response(url: str, mime_type: str) -> bool:
@@ -492,7 +510,9 @@ class DevToolsClient:
         mask = self.recv_exact(4) if masked else b""
         payload = self.recv_exact(length)
         if masked:
-            payload = bytes(value ^ mask[index % 4] for index, value in enumerate(payload))
+            payload = bytes(
+                value ^ mask[index % 4] for index, value in enumerate(payload)
+            )
         return opcode, payload
 
     def recv_exact(self, size: int) -> bytes:

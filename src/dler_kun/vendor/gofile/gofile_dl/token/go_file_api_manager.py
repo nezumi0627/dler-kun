@@ -9,9 +9,10 @@ class GoFileAPIManager:
 
     async def fetch_new_token(self) -> str:
         """GoFile APIから新しいトークンを取得し返す"""
-        async with aiohttp.ClientSession() as session, session.post(
-            self.ACCOUNT_URL
-        ) as response:
+        async with (
+            aiohttp.ClientSession() as session,
+            session.post(self.ACCOUNT_URL) as response,
+        ):
             data = await response.json()
             if response.status != 200:
                 raise RuntimeError(

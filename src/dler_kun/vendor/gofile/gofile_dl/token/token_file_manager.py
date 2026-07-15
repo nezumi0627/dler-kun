@@ -6,9 +6,7 @@ from typing import Dict, List
 class TokenFileManager:
     """トークンファイルを管理するクラス"""
 
-    def __init__(
-        self, token_file: str = os.getenv("TOKEN_FILE_PATH", "tokens.json")
-    ):
+    def __init__(self, token_file: str = os.getenv("TOKEN_FILE_PATH", "tokens.json")):
         self.token_file_path = token_file
 
     def load_tokens(self) -> List[Dict[str, str]]:

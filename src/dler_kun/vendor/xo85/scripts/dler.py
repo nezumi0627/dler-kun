@@ -9,10 +9,16 @@ from xo_dler import CrawlConfig, DownloadConfig, crawl_once, download_items  # t
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Download media discovered by the crawler.")
+    parser = argparse.ArgumentParser(
+        description="Download media discovered by the crawler."
+    )
     add_crawl_arguments(parser)
-    parser.add_argument("--output-dir", type=Path, default=Path("downloads"), help="Download directory.")
-    parser.add_argument("--overwrite", action="store_true", help="Download again even if a file exists.")
+    parser.add_argument(
+        "--output-dir", type=Path, default=Path("downloads"), help="Download directory."
+    )
+    parser.add_argument(
+        "--overwrite", action="store_true", help="Download again even if a file exists."
+    )
     args = parser.parse_args()
 
     items = crawl_once(

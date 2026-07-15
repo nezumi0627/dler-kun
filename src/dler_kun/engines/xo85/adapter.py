@@ -50,7 +50,10 @@ class Xo85Engine(IDownloader):
             message=result.message,
             files=result.files,
             errors=result.errors,
-            metadata={"items": [item.__dict__ for item in result.items], **result.metadata},
+            metadata={
+                "items": [item.__dict__ for item in result.items],
+                **result.metadata,
+            },
         )
 
     def crawl(self, request: CrawlRequest) -> CrawlResult:
@@ -60,7 +63,9 @@ class Xo85Engine(IDownloader):
                 return self._crawl_fast(request)
             from xo_dler import CrawlConfig, DownloadConfig, crawl_once, download_items
 
-            seeds = request.seeds or [request.options.get("seed") or "https://www.85xo.com/latest-updates/"]
+            seeds = request.seeds or [
+                request.options.get("seed") or "https://www.85xo.com/latest-updates/"
+            ]
             crawl_config = CrawlConfig(
                 seeds=[str(seed) for seed in seeds],
                 days=request.days,
@@ -81,7 +86,9 @@ class Xo85Engine(IDownloader):
                     output_dir=request.output_dir,
                     skip_existing=not bool(request.options.get("overwrite", False)),
                 )
-                files = [str(path) for path in download_items(media_items, download_config)]
+                files = [
+                    str(path) for path in download_items(media_items, download_config)
+                ]
             return CrawlResult(
                 job_id=request.job_id,
                 engine_id=self.engine_id,
@@ -117,7 +124,9 @@ class Xo85Engine(IDownloader):
             to_existing_media_items,
         )
 
-        seeds = request.seeds or [request.options.get("seed") or "https://www.85xo.com/latest-updates/"]
+        seeds = request.seeds or [
+            request.options.get("seed") or "https://www.85xo.com/latest-updates/"
+        ]
         fast_items = crawl_fast(
             seeds=[str(seed) for seed in seeds],
             days=request.days,
@@ -143,7 +152,9 @@ class Xo85Engine(IDownloader):
                         request.options.get("download_read_timeout", 30.0)
                     ),
                     attempts=int(request.options.get("download_attempts", 2)),
-                    cache_path=Path(str(request.options.get("cache_path", "download_cache.json"))),
+                    cache_path=Path(
+                        str(request.options.get("cache_path", "download_cache.json"))
+                    ),
                     progress_callback=request.options.get("progress_callback"),
                 )
             ]

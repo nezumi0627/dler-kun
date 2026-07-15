@@ -10,10 +10,19 @@ from xo_dler import CrawlConfig, DownloadConfig, crawl_once, download_items  # t
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Continuously crawl and download media at an interval.")
+    parser = argparse.ArgumentParser(
+        description="Continuously crawl and download media at an interval."
+    )
     add_crawl_arguments(parser)
-    parser.add_argument("--output-dir", type=Path, default=Path("downloads"), help="Download directory.")
-    parser.add_argument("--interval-minutes", type=float, default=60.0, help="Minutes between crawl runs.")
+    parser.add_argument(
+        "--output-dir", type=Path, default=Path("downloads"), help="Download directory."
+    )
+    parser.add_argument(
+        "--interval-minutes",
+        type=float,
+        default=60.0,
+        help="Minutes between crawl runs.",
+    )
     parser.add_argument("--once", action="store_true", help="Run one cycle and exit.")
     args = parser.parse_args()
 

@@ -78,7 +78,11 @@ def download_headers(item: MediaItem, config: DownloadConfig) -> dict[str, str]:
 
 def target_path(output_dir: Path, item: MediaItem) -> Path:
     parsed = urlparse(item.url)
-    raw_name = filename_from_query(parsed.query) or unquote(Path(parsed.path).name) or item.display_name
+    raw_name = (
+        filename_from_query(parsed.query)
+        or unquote(Path(parsed.path).name)
+        or item.display_name
+    )
     safe_name = sanitize_filename(raw_name)
     if not Path(safe_name).suffix:
         safe_name = f"{safe_name}.bin"
