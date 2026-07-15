@@ -40,6 +40,8 @@ def build_parser() -> argparse.ArgumentParser:
     crawl.add_argument("--overwrite", action="store_true")
     crawl.add_argument("--method", choices=["fast", "legacy"], default="fast")
     crawl.add_argument("--parallel-downloads", type=int, default=4)
+    crawl.add_argument("--download-read-timeout", type=float, default=30.0)
+    crawl.add_argument("--download-attempts", type=int, default=2)
 
     web = sub.add_parser("web", help="Run local Web UI")
     web.add_argument("--host", default="127.0.0.1")
@@ -93,6 +95,8 @@ def main() -> None:
                 "overwrite",
                 "method",
                 "parallel_downloads",
+                "download_read_timeout",
+                "download_attempts",
             }
             and value not in (None, False, "")
         }

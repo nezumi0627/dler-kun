@@ -138,6 +138,10 @@ class Xo85Engine(IDownloader):
                     media_items,
                     download_config,
                     max_workers=int(request.options.get("parallel_downloads", 4)),
+                    read_timeout_seconds=float(
+                        request.options.get("download_read_timeout", 30.0)
+                    ),
+                    attempts=int(request.options.get("download_attempts", 2)),
                 )
             ]
         return CrawlResult(

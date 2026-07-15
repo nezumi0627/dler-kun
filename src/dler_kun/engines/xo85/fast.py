@@ -254,8 +254,14 @@ def to_existing_media_items(items: Iterable[FastMediaItem], project_path: Path):
     ]
 
 
-def download_existing_items_parallel(items: list, config, max_workers: int = 4) -> list[Path]:
-    from xo_dler.downloader import download_file, target_path, unique_target_path, write_metadata
+def download_existing_items_parallel(
+    items: list,
+    config,
+    max_workers: int = 4,
+    read_timeout_seconds: float = 30.0,
+    attempts: int = 2,
+) -> list[Path]:
+    from xo_dler.downloader import target_path, unique_target_path, write_metadata
 
     config.output_dir.mkdir(parents=True, exist_ok=True)
     max_workers = max(1, max_workers)
@@ -274,7 +280,14 @@ def download_existing_items_parallel(items: list, config, max_workers: int = 4) 
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {
-            executor.submit(download_file, item, target, config): (item, target)
+            executor.submit(
+                download_item_robust,
+                item,
+                target,
+                config,
+                read_timeout_seconds,
+                attempts,
+            ): (item, target)
             for item, target in tasks
         }
         for future in as_completed(futures):
@@ -287,6 +300,47 @@ def download_existing_items_parallel(items: list, config, max_workers: int = 4) 
                 print(f"[warn] download worker failed: {getattr(item, 'url', '')} ({exc})")
 
     return downloaded
+
+
+def download_item_robust(
+    item,
+    target: Path,
+    config,
+    read_timeout_seconds: float,
+    attempts: int,
+) -> bool:
+    import requests
+    from xo_dler.downloader import download_headers
+
+    part_path = target.with_suffix(target.suffix + ".part")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if part_path.exists():
+        part_path.unlink(missing_ok=True)
+
+    last_error: Exception | None = None
+    for attempt in range(1, max(1, attempts) + 1):
+        try:
+            with requests.get(
+                item.url,
+                headers=download_headers(item, config),
+                stream=True,
+                timeout=(10, read_timeout_seconds),
+            ) as response:
+                response.raise_for_status()
+                with part_path.open("wb") as file:
+                    for chunk in response.iter_content(chunk_size=config.chunk_size):
+                        if chunk:
+                            file.write(chunk)
+            part_path.replace(target)
+            print(f"[done] {target}")
+            return True
+        except requests.RequestException as exc:
+            last_error = exc
+            print(f"[warn] download attempt {attempt}/{attempts} failed: {item.url} ({exc})")
+            part_path.unlink(missing_ok=True)
+
+    print(f"[warn] download failed: {item.url} ({last_error})")
+    return False
 
 
 def match_group(pattern: re.Pattern[str], text: str, group: str) -> str | None:
