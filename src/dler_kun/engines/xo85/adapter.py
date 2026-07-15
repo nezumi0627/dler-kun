@@ -143,6 +143,8 @@ class Xo85Engine(IDownloader):
                         request.options.get("download_read_timeout", 30.0)
                     ),
                     attempts=int(request.options.get("download_attempts", 2)),
+                    cache_path=Path(str(request.options.get("cache_path", "download_cache.json"))),
+                    progress_callback=request.options.get("progress_callback"),
                 )
             ]
         return CrawlResult(

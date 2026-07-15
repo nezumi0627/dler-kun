@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Callable
 from uuid import uuid4
 
-from .models import JobStatus, LogEvent, LogLevel, QueueJob
+from .models import CacheEntry, CacheStatus, JobStatus, LogEvent, LogLevel, QueueJob
 
 
 def utc_now() -> str:
@@ -130,6 +130,75 @@ class HistoryManager:
     def list(self) -> list[dict[str, Any]]:
         with self._lock:
             return list(self._items)
+
+
+class DownloadCacheManager:
+    def __init__(self, path: Path | None = None) -> None:
+        self.path = path or Path("download_cache.json")
+        self._lock = threading.Lock()
+        self._items = self._load()
+
+    def _load(self) -> dict[str, dict[str, Any]]:
+        if not self.path.exists():
+            return {}
+        try:
+            payload = json.loads(self.path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return {}
+        return payload if isinstance(payload, dict) else {}
+
+    def get(self, key: str) -> dict[str, Any] | None:
+        with self._lock:
+            item = self._items.get(key)
+            return dict(item) if item else None
+
+    def is_complete(self, key: str) -> bool:
+        item = self.get(key)
+        if not item or item.get("status") != CacheStatus.COMPLETE.value:
+            return False
+        path = Path(str(item.get("path") or ""))
+        expected_size = int(item.get("size") or 0)
+        return path.exists() and path.stat().st_size > 0 and (
+            expected_size <= 0 or path.stat().st_size == expected_size
+        )
+
+    def mark(
+        self,
+        key: str,
+        url: str,
+        path: Path,
+        status: CacheStatus,
+        engine_id: str | None = None,
+        error: str = "",
+    ) -> None:
+        size = path.stat().st_size if path.exists() and path.is_file() else 0
+        entry = CacheEntry(
+            key=key,
+            url=url,
+            path=str(path),
+            status=status,
+            size=size,
+            engine_id=engine_id,
+            error=error,
+        )
+        with self._lock:
+            payload = asdict(entry)
+            payload["status"] = status.value
+            self._items[key] = payload
+            _atomic_write_json(self.path, self._items)
+
+    def summary(self) -> dict[str, int]:
+        counts = {status.value: 0 for status in CacheStatus}
+        with self._lock:
+            for item in self._items.values():
+                status = str(item.get("status") or "")
+                if status in counts:
+                    counts[status] += 1
+        return counts
+
+    def list(self) -> list[dict[str, Any]]:
+        with self._lock:
+            return list(self._items.values())
 
 
 class ProgressManager:

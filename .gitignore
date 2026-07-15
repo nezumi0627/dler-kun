@@ -13,10 +13,12 @@ node_modules/
 dist/
 build/
 .vite/
+src-tauri/target/
 
 # App runtime data
 config.json
 history.json
+download_cache.json
 downloads/
 logs/
 *.db

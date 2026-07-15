@@ -4,6 +4,8 @@ import json
 import re
 import shutil
 import subprocess
+import threading
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -12,6 +14,9 @@ from pathlib import Path
 from typing import Callable, Iterable
 from urllib.parse import urljoin, urlparse
 from urllib.request import Request, urlopen
+
+from ...managers import DownloadCacheManager
+from ...models import CacheStatus
 
 
 USER_AGENT = (
@@ -299,24 +304,71 @@ def download_existing_items_parallel(
     max_workers: int = 4,
     read_timeout_seconds: float = 30.0,
     attempts: int = 2,
+    cache_path: Path | None = None,
+    progress_callback: Callable[[dict], None] | None = None,
 ) -> list[Path]:
     from xo_dler.downloader import target_path, unique_target_path, write_metadata
 
     config.output_dir.mkdir(parents=True, exist_ok=True)
     max_workers = max(1, max_workers)
     curl_path = shutil.which("curl")
+    cache = DownloadCacheManager(cache_path) if cache_path else None
     downloaded: list[Path] = []
     tasks = []
+    start_time = time.monotonic()
+    progress_lock = threading.Lock()
+    completed = 0
+    total = len(items)
+
+    def emit_progress(current_file: str = "") -> None:
+        if not progress_callback:
+            return
+        elapsed = max(0.001, time.monotonic() - start_time)
+        with progress_lock:
+            done = completed
+        rate = done / elapsed
+        remaining = max(0, total - done)
+        eta_seconds = int(remaining / rate) if rate > 0 else 0
+        progress_callback(
+            {
+                "phase": "download",
+                "current_file": current_file,
+                "completed_files": done,
+                "total_files": total,
+                "progress": round((done / total) * 100, 2) if total else 100,
+                "speed": f"{rate:.2f} files/s",
+                "eta": f"{eta_seconds}s",
+            }
+        )
+
+    def mark_completed(current_file: str = "") -> None:
+        nonlocal completed
+        with progress_lock:
+            completed += 1
+        emit_progress(current_file)
 
     for item in items:
         target = target_path(config.output_dir, item)
-        if target.exists() and config.skip_existing:
+        cache_key = cache_key_for_url(item.url)
+        metadata_path = target.with_suffix(target.suffix + ".json")
+        is_cached_complete = bool(cache and cache.is_complete(cache_key))
+        is_sidecar_complete = target.exists() and metadata_path.exists() and target.stat().st_size > 0
+        if config.skip_existing and (is_cached_complete or is_sidecar_complete):
             print(f"[skip] exists: {target}")
+            if cache:
+                cache.mark(cache_key, item.url, target, CacheStatus.COMPLETE, "85xo")
             downloaded.append(target)
+            mark_completed(str(target))
             continue
+        if target.exists() or target.with_suffix(target.suffix + ".part").exists():
+            target.unlink(missing_ok=True)
+            target.with_suffix(target.suffix + ".part").unlink(missing_ok=True)
+            if cache:
+                cache.mark(cache_key, item.url, target, CacheStatus.CORRUPT, "85xo")
         if target.exists():
             target = unique_target_path(target)
-        tasks.append((item, target))
+        tasks.append((item, target, cache_key))
+    emit_progress()
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {
@@ -328,17 +380,27 @@ def download_existing_items_parallel(
                 read_timeout_seconds,
                 attempts,
                 curl_path,
-            ): (item, target)
-            for item, target in tasks
+                cache,
+                cache_key,
+            ): (item, target, cache_key)
+            for item, target, cache_key in tasks
         }
         for future in as_completed(futures):
-            item, target = futures[future]
+            item, target, cache_key = futures[future]
             try:
                 if future.result():
                     write_metadata(target, item)
+                    if cache:
+                        cache.mark(cache_key, item.url, target, CacheStatus.COMPLETE, "85xo")
                     downloaded.append(target)
+                elif cache:
+                    cache.mark(cache_key, item.url, target, CacheStatus.FAILED, "85xo")
             except Exception as exc:  # noqa: BLE001 - keep long crawl moving.
                 print(f"[warn] download worker failed: {getattr(item, 'url', '')} ({exc})")
+                if cache:
+                    cache.mark(cache_key, item.url, target, CacheStatus.FAILED, "85xo", str(exc))
+            finally:
+                mark_completed(str(target))
 
     return downloaded
 
@@ -350,6 +412,8 @@ def download_item_robust(
     read_timeout_seconds: float,
     attempts: int,
     curl_path: str | None,
+    cache: DownloadCacheManager | None,
+    cache_key: str,
 ) -> bool:
     import requests
     from xo_dler.downloader import download_headers
@@ -357,13 +421,13 @@ def download_item_robust(
     part_path = target.with_suffix(target.suffix + ".part")
     target.parent.mkdir(parents=True, exist_ok=True)
     use_curl = bool(curl_path)
-    if part_path.exists() and not use_curl:
-        part_path.unlink(missing_ok=True)
 
     last_error: Exception | None = None
     for attempt in range(1, max(1, attempts) + 1):
         try:
             headers = download_headers(item, config)
+            if cache:
+                cache.mark(cache_key, item.url, part_path, CacheStatus.PARTIAL, "85xo")
             if use_curl:
                 download_with_curl(curl_path, item.url, part_path, headers, read_timeout_seconds)
             else:
@@ -386,11 +450,24 @@ def download_item_robust(
         except (OSError, requests.RequestException, subprocess.SubprocessError) as exc:
             last_error = exc
             print(f"[warn] download attempt {attempt}/{attempts} failed: {item.url} ({exc})")
-            if not use_curl:
+            if should_keep_partial_after_failure(part_path, use_curl):
+                if cache:
+                    cache.mark(cache_key, item.url, part_path, CacheStatus.PARTIAL, "85xo", str(exc))
+            else:
                 part_path.unlink(missing_ok=True)
 
     print(f"[warn] download failed: {item.url} ({last_error})")
     return False
+
+
+def should_keep_partial_after_failure(part_path: Path, use_curl: bool) -> bool:
+    return use_curl and part_path.exists() and part_path.stat().st_size > 0
+
+
+def cache_key_for_url(url: str) -> str:
+    import hashlib
+
+    return hashlib.sha256(url.encode("utf-8")).hexdigest()
 
 
 def download_with_curl(

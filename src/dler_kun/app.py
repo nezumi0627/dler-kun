@@ -14,6 +14,7 @@ from .managers import (
     CookieManager,
     HistoryManager,
     LogManager,
+    DownloadCacheManager,
     ProgressManager,
     ProxyManager,
     QueueManager,
@@ -29,6 +30,7 @@ class DlerKunApp:
         self.config = ConfigManager(config_path)
         self.logs = LogManager()
         self.history = HistoryManager()
+        self.cache = DownloadCacheManager()
         self.progress = ProgressManager()
         self.queue = QueueManager()
         self.proxy = ProxyManager(self.config)
@@ -134,7 +136,14 @@ class DlerKunApp:
             seeds=seeds or [],
             days=days,
             download=download,
-            options=options or {},
+            options={
+                **(options or {}),
+                "cache_path": str(self.cache.path),
+                "progress_callback": lambda state: self._update_job_progress(
+                    queue_job.id,
+                    state,
+                ),
+            },
         )
         self.queue.update(queue_job.id, status=JobStatus.RUNNING)
         self.logs.info("Crawl started", engine_id=engine.engine_id, job_id=queue_job.id)
@@ -158,6 +167,10 @@ class DlerKunApp:
             "logs": self.logs.list(),
             "progress": self.progress.list(),
             "config": self.config.as_dict(),
+            "cache": {
+                "summary": self.cache.summary(),
+                "items": self.cache.list()[-200:],
+            },
             "supported_domains": self.detector.supported_domains(),
         }
 
@@ -179,6 +192,44 @@ class DlerKunApp:
         self.progress.update(job_id, progress=progress, state=status.value)
         log = self.logs.success if status == JobStatus.SUCCESS else self.logs.error
         log(message, engine_id=engine_id, job_id=job_id)
+
+    def _update_job_progress(self, job_id: str, state: dict[str, Any]) -> None:
+        self.progress.update(job_id, **state)
+        self.queue.update(
+            job_id,
+            progress=float(state.get("progress", 0) or 0),
+            speed=str(state.get("speed", "") or ""),
+            eta=str(state.get("eta", "") or ""),
+        )
+
+    def start_download_urls(
+        self,
+        urls: list[str],
+        output_dir: str | Path | None = None,
+        options: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        future = self.thread_pool.submit(self.download_urls, urls, output_dir, options)
+        return {"started": True, "kind": "download", "future": str(id(future))}
+
+    def start_crawl(
+        self,
+        service: str,
+        output_dir: str | Path | None = None,
+        seeds: list[str] | None = None,
+        days: int = 10,
+        download: bool = False,
+        options: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        future = self.thread_pool.submit(
+            self.crawl,
+            service,
+            output_dir,
+            seeds,
+            days,
+            download,
+            options,
+        )
+        return {"started": True, "kind": "crawl", "future": str(id(future))}
 
 
 def to_jsonable(value: Any) -> Any:

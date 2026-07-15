@@ -27,6 +27,7 @@ URL / Crawl Request
 cd E:\projects\dler-kun
 python -m venv .venv
 .\.venv\Scripts\python -m pip install -e .[dev,web]
+npm install
 ```
 
 既存プロジェクトの処理は `src/dler_kun/vendor/` に取り込み済みです。通常利用では `E:\projects\dl`、`E:\projects\gofile-downloader`、`E:\projects\85-xo` は不要です。
@@ -47,7 +48,22 @@ python -m dler_kun crawl 85xo --days 10 --download --method fast --parallel-down
 
 # Web UI
 python -m dler_kun web
+
+# Desktop UI (Tauri + React)
+npm run desktop:dev
 ```
+
+## Desktop UI
+
+`npm run desktop:dev` で Tauri v2 + React + Vite の軽量デスクトップアプリを起動できます。Tauri 側が Python Web API を `127.0.0.1:8787` で裏起動し、React UI は snapshot を定期更新して状態を表示します。
+
+- Home: URL投入、出力先、実行状況サマリー
+- Downloads: 進捗、速度、ETA、現在ファイル、ジョブ状態
+- Crawl: 85xo fast crawl、収集のみ/収集してDL
+- Cache: `download_cache.json` の complete/partial/corrupt/failed と保存先
+- Logs/Settings: 実行ログと設定確認
+
+完全DL済みのファイルは `download_cache.json` と metadata sidecar を根拠に次回 skip します。途中終了や破損扱いの `.part` / 対象ファイルは次回実行前に破棄して、最初から再DLします。
 
 ## Web UI
 

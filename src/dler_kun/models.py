@@ -17,6 +17,13 @@ class JobStatus(str, Enum):
     UNSUPPORTED = "unsupported"
 
 
+class CacheStatus(str, Enum):
+    COMPLETE = "complete"
+    PARTIAL = "partial"
+    CORRUPT = "corrupt"
+    FAILED = "failed"
+
+
 class LogLevel(str, Enum):
     INFO = "INFO"
     DEBUG = "DEBUG"
@@ -116,3 +123,17 @@ class QueueJob:
     eta: str = ""
     output_dir: str = ""
     error: str = ""
+
+
+@dataclass
+class CacheEntry:
+    key: str
+    url: str
+    path: str
+    status: CacheStatus
+    size: int = 0
+    engine_id: str | None = None
+    error: str = ""
+    updated_at: str = field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat()
+    )

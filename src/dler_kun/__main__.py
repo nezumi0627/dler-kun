@@ -47,6 +47,7 @@ def build_parser() -> argparse.ArgumentParser:
     web = sub.add_parser("web", help="Run local Web UI")
     web.add_argument("--host", default="127.0.0.1")
     web.add_argument("--port", type=int, default=8787)
+    web.add_argument("--no-open", action="store_true")
 
     config = sub.add_parser("config", help="Print effective config")
     config.add_argument("--save", action="store_true", help="Write default config.json")
@@ -115,7 +116,7 @@ def main() -> None:
         return
 
     if args.command == "web":
-        run_web_server(app, args.host, args.port)
+        run_web_server(app, args.host, args.port, open_browser=not args.no_open)
         return
 
     if args.command == "config":
