@@ -4,7 +4,7 @@
 
 ## 対応エンジン
 
-- `dl`: `tweetfile.com` / `twimg-media.com` 系の既存 Python ダウンローダー
+- `twimg`: `tweetfile.com` / `twimg-media.com` 系の既存 Python ダウンローダー
 - `gofile`: `gofile.io` の既存非同期ダウンローダー
 - `85xo`: `85xo.com` の既存 crawler/downloader
 
@@ -26,12 +26,13 @@ URL / Crawl Request
 ```powershell
 cd E:\projects\dler-kun
 python -m venv .venv
-.\.venv\Scripts\python -m pip install -e .[dev]
+.\.venv\Scripts\Activate.ps1
+.\.venv\Scripts\python -m pip install -e ".[dev]"
 ```
 
-既存プロジェクトの処理は `src/dler_kun/vendor/` に取り込み済みです。通常利用では `E:\projects\dl`、`E:\projects\gofile-downloader`、`E:\projects\85-xo` は不要です。
+既存プロジェクトの処理は `src/dler_kun/vendor/` に取り込み済みです。通常利用では外部の元プロジェクトディレクトリは不要です。
 
-開発時だけ外部実装を一時的に試す場合は、`config.json` または環境変数 `DLER_DL_PATH`、`DLER_GOFILE_PATH`、`DLER_85XO_PATH` で上書きできます。
+開発時だけ外部実装を一時的に試す場合は、`config.json` または環境変数 `DLER_TWIMG_PATH`、`DLER_GOFILE_PATH`、`DLER_85XO_PATH` で上書きできます。
 
 ## CLI
 
@@ -45,6 +46,8 @@ python -m dler_kun download https://tweetfile.com/example https://gofile.io/d/ex
 # 85xoを10日前まで高速クロールしてダウンロード
 python -m dler_kun crawl 85xo --days 10 --download --method fast --parallel-downloads 4 --download-read-timeout 30 --download-attempts 2
 ```
+
+仮想環境を有効化しない場合は、`.\.venv\Scripts\python -m dler_kun ...` のように `.venv` の Python を直接指定してください。
 
 ## Cache
 

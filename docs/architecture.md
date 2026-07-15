@@ -28,7 +28,7 @@ CLI
 
 ```text
 src/dler_kun/engines/
-  dl/
+  twimg/
   gofile/
   85xo/
 ```
@@ -41,7 +41,7 @@ Pattern matching is intentionally simple and explicit:
 
 - `gofile.io` -> `gofile`
 - `85xo.com` -> `85xo`
-- `tweetfile.com`, `twimg-media.com`, `cdn1.twimg-media.com` -> `dl`
+- `tweetfile.com`, `twimg-media.com`, `cdn1.twimg-media.com` -> `twimg`
 
 Unknown URLs return `unsupported_service`.
 

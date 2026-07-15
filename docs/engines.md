@@ -1,8 +1,8 @@
 # Engines
 
-## `dl`
+## `twimg`
 
-Vendored source: `src/dler_kun/vendor/dl/download_twitter_media.py`
+Vendored source: `src/dler_kun/vendor/twimg/download_twitter_media.py`
 
 Supported URL patterns:
 

@@ -5,7 +5,7 @@ twimg_dl.py — Twitter / tweetfile media downloader
 
 Supports: tweetfile.com, twimg-media.com
 Uses ECDH + AES-GCM encrypted API + Caesar-shift URL routing.
-Tracks all downloads in a SQLite database (dl.db).
+Tracks all downloads in a SQLite database (twimg.db).
 
 Usage:
     python download_twitter_media.py <URL> [URL ...] [options]
@@ -71,7 +71,9 @@ _USER_AGENT = (
 
 _MEDIA_RE = re.compile(r"\.(mp4|m3u8)(\?|$)", re.IGNORECASE)
 _URL_RE = re.compile(r"https?://")
-_NUXT_RE = re.compile(r'<script[^>]*id=["\']__NUXT_DATA__["\'][^>]*>(.*?)</script>', re.S)
+_NUXT_RE = re.compile(
+    r'<script[^>]*id=["\']__NUXT_DATA__["\'][^>]*>(.*?)</script>', re.S
+)
 _COVER_RE = re.compile(r"(https://[^/]+/[0-9a-f\-]{36})/thumbnail")
 _SAFE_NAME_RE = re.compile(r'[\\/:*?"<>|.]')
 _LEADING_A_RE = re.compile(r"^a[A-Za-z0-9]")
@@ -80,9 +82,9 @@ _TRAILING_JUNK_RE = re.compile(r"[\s.]+$")
 _MEDIA_KEYS = {"fileurl", "originurl", "videourl"}
 _VIDEO_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv", ".flv", ".webm"}
 
-_EP_INIT          = "/4790d2ecfa"
-_EP_INFO          = "/8f237a629a"
-_EP_LIST          = "/320fb0b134"
+_EP_INIT = "/4790d2ecfa"
+_EP_INFO = "/8f237a629a"
+_EP_LIST = "/320fb0b134"
 _TWEETFILE_EP_INIT = "/2ba99883f8"
 _TWEETFILE_EP_INFO = "/0a6bd15c3e"
 _TWEETFILE_EP_LIST = "/639aeedd6c"
@@ -273,7 +275,7 @@ class DB:
         )
         counts = {r["status"]: r["cnt"] for r in rows}
         ch = self.fetchone("SELECT COUNT(*) AS cnt FROM channels")["cnt"]  # type: ignore[index]
-        runs = self.fetchone("SELECT COUNT(*) AS cnt FROM runs")["cnt"]    # type: ignore[index]
+        runs = self.fetchone("SELECT COUNT(*) AS cnt FROM runs")["cnt"]  # type: ignore[index]
         return {
             "channels": ch,
             "runs": runs,
@@ -309,6 +311,7 @@ def _now() -> str:
 # ── HTTP session ──────────────────────────────────────────────────────────────
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 def _make_session(retries: int = 3, backoff: float = 0.3) -> requests.Session:
     session = requests.Session()
     retry = Retry(
@@ -330,6 +333,7 @@ _SESSION = _make_session()
 # ══════════════════════════════════════════════════════════════════════════════
 # ── Caesar-shift + domain helpers ─────────────────────────────────────────────
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 def _domain_seed(domain: str) -> int:
     h = 5381
@@ -353,6 +357,7 @@ def _main_domain(hostname: str) -> str:
 # ══════════════════════════════════════════════════════════════════════════════
 # ── Page config extraction ────────────────────────────────────────────────────
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 @dataclass(frozen=True)
 class PageConfig:
@@ -389,17 +394,23 @@ def extract_config(page_url: str) -> PageConfig:
     parsed_url = urlparse(page_url)
     site_domain = _main_domain(parsed_url.netloc)
     site_cfg = _SITE_CONFIGS.get(site_domain, _SITE_CONFIGS["twimg-media.com"])
-    skip_tokens       = site_cfg["skip_tokens"]
-    api_domain_kw     = site_cfg["api_domain_keyword"]
-    default_ep_init   = site_cfg["ep_init"]
-    default_ep_info   = site_cfg["ep_info"]
-    default_ep_list   = site_cfg["ep_list"]
+    skip_tokens = site_cfg["skip_tokens"]
+    api_domain_kw = site_cfg["api_domain_keyword"]
+    default_ep_init = site_cfg["ep_init"]
+    default_ep_info = site_cfg["ep_info"]
+    default_ep_list = site_cfg["ep_list"]
 
     html = r.text
 
-    shield_init_m = re.search(r'apiShieldInitPath["\s]*:["\s]*["\']([^"\']+)["\']', html)
-    shield_info_m = re.search(r'apiShieldInfoPath["\s]*:["\s]*["\']([^"\']+)["\']', html)
-    shield_list_m = re.search(r'apiShieldListPath["\s]*:["\s]*["\']([^"\']+)["\']', html)
+    shield_init_m = re.search(
+        r'apiShieldInitPath["\s]*:["\s]*["\']([^"\']+)["\']', html
+    )
+    shield_info_m = re.search(
+        r'apiShieldInfoPath["\s]*:["\s]*["\']([^"\']+)["\']', html
+    )
+    shield_list_m = re.search(
+        r'apiShieldListPath["\s]*:["\s]*["\']([^"\']+)["\']', html
+    )
 
     m = _NUXT_RE.search(html)
     if not m:
@@ -410,7 +421,8 @@ def extract_config(page_url: str) -> PageConfig:
 
     api_domain = next(
         (
-            s for s in strings
+            s
+            for s in strings
             if s.startswith("https://")
             and api_domain_kw in s
             and "/s/" not in s
@@ -422,9 +434,23 @@ def extract_config(page_url: str) -> PageConfig:
     if not api_domain:
         raise ValueError(f"Could not locate apiDomain for {site_domain}.")
 
-    ep_init = (shield_init_m.group(1) if shield_init_m else None) or _find_nested(data, "apiShieldInitPath") or default_ep_init
-    ep_info = (shield_info_m.group(1) if shield_info_m else None) or _find_nested(data, "apiShieldInfoPath") or _find_nested(data, "apiShieldGetInfoPath") or default_ep_info
-    ep_list = (shield_list_m.group(1) if shield_list_m else None) or _find_nested(data, "apiShieldListPath") or _find_nested(data, "apiShieldGetListPath") or default_ep_list
+    ep_init = (
+        (shield_init_m.group(1) if shield_init_m else None)
+        or _find_nested(data, "apiShieldInitPath")
+        or default_ep_init
+    )
+    ep_info = (
+        (shield_info_m.group(1) if shield_info_m else None)
+        or _find_nested(data, "apiShieldInfoPath")
+        or _find_nested(data, "apiShieldGetInfoPath")
+        or default_ep_info
+    )
+    ep_list = (
+        (shield_list_m.group(1) if shield_list_m else None)
+        or _find_nested(data, "apiShieldListPath")
+        or _find_nested(data, "apiShieldGetListPath")
+        or default_ep_list
+    )
 
     log.info("Endpoints: init=%s  info=%s  list=%s", ep_init, ep_info, ep_list)
 
@@ -452,6 +478,7 @@ def extract_config(page_url: str) -> PageConfig:
 # ══════════════════════════════════════════════════════════════════════════════
 # ── ECDH + AES-GCM API client ─────────────────────────────────────────────────
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 @dataclass
 class ApiClient:
@@ -494,7 +521,9 @@ class ApiClient:
     def _encrypt(self, payload: dict) -> dict:
         self._assert_ready()
         iv = os.urandom(12)
-        ct = self._aesgcm().encrypt(iv, json.dumps(payload, separators=(",", ":")).encode(), None)
+        ct = self._aesgcm().encrypt(
+            iv, json.dumps(payload, separators=(",", ":")).encode(), None
+        )
         return {
             "d": base64.b64encode(ct[:-16]).decode(),
             "v": base64.b64encode(iv).decode(),
@@ -509,9 +538,14 @@ class ApiClient:
 
     def init_session(self) -> None:
         priv = ec.generate_private_key(ec.SECP256R1())
-        cpk_hex = priv.public_key().public_bytes(
-            serialization.Encoding.X962, serialization.PublicFormat.UncompressedPoint
-        ).hex()
+        cpk_hex = (
+            priv.public_key()
+            .public_bytes(
+                serialization.Encoding.X962,
+                serialization.PublicFormat.UncompressedPoint,
+            )
+            .hex()
+        )
         r = _SESSION.post(
             self._url(self.ep_init),
             data=json.dumps({"cpk": cpk_hex}),
@@ -520,16 +554,29 @@ class ApiClient:
         )
         r.raise_for_status()
         p = r.json()
-        srv_pub = ec.EllipticCurvePublicKey.from_encoded_point(ec.SECP256R1(), bytes.fromhex(p["k"]))
+        srv_pub = ec.EllipticCurvePublicKey.from_encoded_point(
+            ec.SECP256R1(), bytes.fromhex(p["k"])
+        )
         shared = priv.exchange(ec.ECDH(), srv_pub)
         digest = hashes.Hash(hashes.SHA256())
         digest.update(shared)
         self._session_key = digest.finalize()
         d, v, t = (base64.b64decode(p[k]) for k in ("d", "v", "t"))
-        self._token = json.loads(AESGCM(self._session_key).decrypt(v, d + t, None))["token"]
+        self._token = json.loads(AESGCM(self._session_key).decrypt(v, d + t, None))[
+            "token"
+        ]
 
-    def request(self, path: str, method: str = "GET", query: dict | None = None, body: dict | None = None) -> dict:
-        payload: dict = {"q": {k: str(v) for k, v in (query or {}).items()}, "m": method.upper()}
+    def request(
+        self,
+        path: str,
+        method: str = "GET",
+        query: dict | None = None,
+        body: dict | None = None,
+    ) -> dict:
+        payload: dict = {
+            "q": {k: str(v) for k, v in (query or {}).items()},
+            "m": method.upper(),
+        }
         if body is not None:
             payload["b"] = body
         r = _SESSION.post(
@@ -542,14 +589,27 @@ class ApiClient:
         return self._decrypt(r.json())
 
     def get_info(self, link_id: str) -> tuple[dict, str]:
-        resp = self.request(self.ep_info, query={"externalLinks": link_id, "domain": self.site_domain})
-        ext = resp.get("data", {}).get("info", {}).get("extraInfo", {}).get("externalLinks", "") or ""
+        resp = self.request(
+            self.ep_info, query={"externalLinks": link_id, "domain": self.site_domain}
+        )
+        ext = (
+            resp.get("data", {})
+            .get("info", {})
+            .get("extraInfo", {})
+            .get("externalLinks", "")
+            or ""
+        )
         return resp, ext
 
     def get_list_page(self, ext_links: str, page: int = 1, size: int = 100) -> dict:
         return self.request(
             self.ep_list,
-            query={"externalLinks": ext_links, "pageNo": page, "pageSize": size, "sortOrder": "2"},
+            query={
+                "externalLinks": ext_links,
+                "pageNo": page,
+                "pageSize": size,
+                "sortOrder": "2",
+            },
         )
 
     def iter_list(self, ext_links: str, size: int = 100) -> Iterator[dict]:
@@ -573,6 +633,7 @@ class ApiClient:
 # ══════════════════════════════════════════════════════════════════════════════
 # ── URL / item helpers ────────────────────────────────────────────────────────
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 def _collect_media_urls(obj: object, found: set[str]) -> None:
     if isinstance(obj, dict):
@@ -619,15 +680,18 @@ def _safe_name(name: str) -> str:
 # ── Download item model ───────────────────────────────────────────────────────
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 @dataclass
 class DownloadItem:
     name: str
     video_url: str
     folder_path: str = ""
-    db_id: int = 0          # files.id in DB
+    db_id: int = 0  # files.id in DB
 
 
-def _resolve_items(client: ApiClient, ext_links: str, current_folder: str = "") -> list[DownloadItem]:
+def _resolve_items(
+    client: ApiClient, ext_links: str, current_folder: str = ""
+) -> list[DownloadItem]:
     result: list[DownloadItem] = []
     for item in client.iter_list(ext_links):
         name = item.get("name", "untitled")
@@ -639,13 +703,16 @@ def _resolve_items(client: ApiClient, ext_links: str, current_folder: str = "") 
         else:
             url = _item_video_url(item)
             if url:
-                result.append(DownloadItem(name=name, video_url=url, folder_path=current_folder))
+                result.append(
+                    DownloadItem(name=name, video_url=url, folder_path=current_folder)
+                )
     return result
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 # ── HLS / MP4 download ────────────────────────────────────────────────────────
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 def _pick_best_stream(m3u8_url: str, quality: str = "best") -> str:
     r = _SESSION.get(m3u8_url, timeout=15)
@@ -661,7 +728,7 @@ def _pick_best_stream(m3u8_url: str, quality: str = "best") -> str:
             continue
         bw_m = re.search(r"BANDWIDTH=(\d+)", line)
         bw = int(bw_m.group(1)) if bw_m else 0
-        for nxt in lines[i + 1:]:
+        for nxt in lines[i + 1 :]:
             nxt = nxt.strip()
             if nxt and not nxt.startswith("#"):
                 streams.append((bw, nxt if nxt.startswith("http") else f"{base}/{nxt}"))
@@ -712,7 +779,10 @@ def download_hls(
         done_count = 0
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
-            futs = {pool.submit(_fetch_segment, (i, url)): i for i, url in enumerate(segments)}
+            futs = {
+                pool.submit(_fetch_segment, (i, url)): i
+                for i, url in enumerate(segments)
+            }
             try:
                 for fut in concurrent.futures.as_completed(futs):
                     idx, data = fut.result()
@@ -721,7 +791,11 @@ def download_hls(
                     if not parallel_mode:
                         pct = done_count * 100 // total
                         bar = "█" * (pct // 5) + "░" * (20 - pct // 5)
-                        print(f"\r  [{bar}] {pct:3d}%  ({done_count}/{total})", end="", flush=True)
+                        print(
+                            f"\r  [{bar}] {pct:3d}%  ({done_count}/{total})",
+                            end="",
+                            flush=True,
+                        )
             except KeyboardInterrupt:
                 for f in futs:
                     f.cancel()
@@ -736,10 +810,23 @@ def download_hls(
 
         tmp_mp4 = tmp_path / "output.mp4"
         proc = subprocess.run(
-            ["ffmpeg", "-y", "-loglevel", "error",
-             "-f", "concat", "-safe", "0",
-             "-i", str(concat_list), "-c", "copy", str(tmp_mp4)],
-            capture_output=True, text=True,
+            [
+                "ffmpeg",
+                "-y",
+                "-loglevel",
+                "error",
+                "-f",
+                "concat",
+                "-safe",
+                "0",
+                "-i",
+                str(concat_list),
+                "-c",
+                "copy",
+                str(tmp_mp4),
+            ],
+            capture_output=True,
+            text=True,
         )
         if proc.returncode != 0:
             log.error("ffmpeg failed:\n%s", proc.stderr[-800:])
@@ -764,6 +851,7 @@ def download_mp4(url: str, dest: Path, referer: str) -> None:
 # ── File path helpers ─────────────────────────────────────────────────────────
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 def _is_valid_video(path: Path) -> bool:
     return path.exists() and path.stat().st_size >= _MIN_VALID_FILE_BYTES
 
@@ -787,6 +875,7 @@ def _resolve_dest(path: Path, force: bool = False) -> Path | None:
 # ── Stats ─────────────────────────────────────────────────────────────────────
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 @dataclass
 class Stats:
     ok: int = 0
@@ -803,6 +892,7 @@ class Stats:
 # ══════════════════════════════════════════════════════════════════════════════
 # ── Per-URL processing ────────────────────────────────════════════════════════
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 def process_url(
     page_url: str,
@@ -856,19 +946,30 @@ def process_url(
         # Register all items in DB + build pending list
         pending: list[tuple[DownloadItem, Path]] = []
         for item in dl_items:
-            file_id = db.upsert_file(channel_id, item.name, item.video_url, item.folder_path)
+            file_id = db.upsert_file(
+                channel_id, item.name, item.video_url, item.folder_path
+            )
             item.db_id = file_id
 
             # DB-level duplicate check
             already_ok, saved_path = db.is_already_ok(channel_id, item.video_url)
-            if already_ok and saved_path and Path(saved_path).exists() and _is_valid_video(Path(saved_path)):
+            if (
+                already_ok
+                and saved_path
+                and Path(saved_path).exists()
+                and _is_valid_video(Path(saved_path))
+            ):
                 log.info("  ⊘ DB skip: %s", item.name)
                 db.set_file_status(file_id, "skipped")
                 stats.skip += 1
                 continue
 
             safe = _safe_name(item.name)
-            dest_dir = (out_dir / _safe_name(item.folder_path)) if item.folder_path else out_dir
+            dest_dir = (
+                (out_dir / _safe_name(item.folder_path))
+                if item.folder_path
+                else out_dir
+            )
             dest_dir.mkdir(parents=True, exist_ok=True)
             dest = _resolve_dest(dest_dir / f"{Path(safe).stem}.mp4", force=args.force)
 
@@ -876,7 +977,8 @@ def process_url(
                 # File exists on disk — mark ok in DB
                 existing = dest_dir / f"{Path(safe).stem}.mp4"
                 db.set_file_status(
-                    file_id, "skipped",
+                    file_id,
+                    "skipped",
                     dest_path=str(existing),
                     file_size=existing.stat().st_size if existing.exists() else None,
                 )
@@ -887,7 +989,8 @@ def process_url(
 
         log.info(
             "Queued %d file(s) to download  (skipping %d already complete).",
-            len(pending), stats.skip,
+            len(pending),
+            stats.skip,
         )
 
         # ── download worker ───────────────────────────────────────────────────
@@ -899,14 +1002,19 @@ def process_url(
             try:
                 if ".m3u8" in item.video_url.lower():
                     download_hls(
-                        item.video_url, dest, page_url,
-                        workers=args.seg_workers, quality=args.quality,
+                        item.video_url,
+                        dest,
+                        page_url,
+                        workers=args.seg_workers,
+                        quality=args.quality,
                         parallel_mode=parallel,
                     )
                 else:
                     download_mp4(item.video_url, dest, page_url)
                 size = dest.stat().st_size if dest.exists() else 0
-                db.set_file_status(item.db_id, "ok", dest_path=str(dest), file_size=size)
+                db.set_file_status(
+                    item.db_id, "ok", dest_path=str(dest), file_size=size
+                )
                 return item, dest, True, ""
             except Exception as exc:
                 err = str(exc)
@@ -947,7 +1055,11 @@ def process_url(
     elapsed = time.monotonic() - t0
     log.info(
         "  [%s] done in %.1fs — ✓%d  ✗%d  ⊘%d",
-        page_url.split("/")[-1], elapsed, stats.ok, stats.fail, stats.skip,
+        page_url.split("/")[-1],
+        elapsed,
+        stats.ok,
+        stats.fail,
+        stats.skip,
     )
     return stats
 
@@ -955,6 +1067,7 @@ def process_url(
 # ══════════════════════════════════════════════════════════════════════════════
 # ── Summary printer ───────────────────────────────────────────────────────────
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 def print_summary(db: DB, base_dir: Path, total: Stats, elapsed: float) -> None:
     sep = "═" * 62
@@ -976,7 +1089,7 @@ def print_summary(db: DB, base_dir: Path, total: Stats, elapsed: float) -> None:
     print(f"         pending   {s['files_pending']}")
     print(f"  Runs             {s['runs']}")
     print(f"  Output dir       {base_dir}")
-    print(f"  DB               {base_dir / 'dl.db'}")
+    print(f"  DB               {base_dir / 'twimg.db'}")
 
     failed = db.failed_files()
     if failed:
@@ -987,13 +1100,14 @@ def print_summary(db: DB, base_dir: Path, total: Stats, elapsed: float) -> None:
             print(f"  ✗ {row['name'][:50]}")
             print(f"      {row['error_msg'][:80] if row['error_msg'] else ''}")
         if len(failed) > 20:
-            print(f"  … and {len(failed)-20} more (query DB for full list)")
+            print(f"  … and {len(failed) - 20} more (query DB for full list)")
     print(sep)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 # ── CLI ───────────────────────────────────────────────────────────────────────
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
@@ -1002,22 +1116,57 @@ def _build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawTextHelpFormatter,
     )
     p.add_argument("urls", nargs="*", help="Landing page URL(s)")
-    p.add_argument("-o", "--output-dir", default="./videos", metavar="DIR",
-                   help="Output directory  [./videos]")
-    p.add_argument("-w", "--seg-workers", type=int, default=16, metavar="N",
-                   dest="seg_workers", help="HLS segment threads per video  [16]")
-    p.add_argument("-p", "--parallel", type=int, default=3, metavar="N",
-                   dest="vid_workers", help="Videos to download in parallel  [3]")
-    p.add_argument("-q", "--quality", choices=["best", "worst"], default="best",
-                   help="HLS quality  [best]")
-    p.add_argument("-f", "--force", action="store_true", help="Force overwrite existing files")
+    p.add_argument(
+        "-o",
+        "--output-dir",
+        default="./videos",
+        metavar="DIR",
+        help="Output directory  [./videos]",
+    )
+    p.add_argument(
+        "-w",
+        "--seg-workers",
+        type=int,
+        default=16,
+        metavar="N",
+        dest="seg_workers",
+        help="HLS segment threads per video  [16]",
+    )
+    p.add_argument(
+        "-p",
+        "--parallel",
+        type=int,
+        default=3,
+        metavar="N",
+        dest="vid_workers",
+        help="Videos to download in parallel  [3]",
+    )
+    p.add_argument(
+        "-q",
+        "--quality",
+        choices=["best", "worst"],
+        default="best",
+        help="HLS quality  [best]",
+    )
+    p.add_argument(
+        "-f", "--force", action="store_true", help="Force overwrite existing files"
+    )
     p.add_argument("-v", "--verbose", action="store_true", help="Debug logging")
-    p.add_argument("--db-summary", action="store_true",
-                   help="Print DB summary and exit (no download)")
-    p.add_argument("--db-failed", action="store_true",
-                   help="List all failed files from DB and exit")
-    p.add_argument("--db-channel", metavar="URL",
-                   help="Show all files for a given channel URL and exit")
+    p.add_argument(
+        "--db-summary",
+        action="store_true",
+        help="Print DB summary and exit (no download)",
+    )
+    p.add_argument(
+        "--db-failed",
+        action="store_true",
+        help="List all failed files from DB and exit",
+    )
+    p.add_argument(
+        "--db-channel",
+        metavar="URL",
+        help="Show all files for a given channel URL and exit",
+    )
     return p
 
 
@@ -1028,7 +1177,7 @@ def main() -> None:
 
     base_dir = Path(args.output_dir).resolve()
     base_dir.mkdir(parents=True, exist_ok=True)
-    db = DB(base_dir / "dl.db")
+    db = DB(base_dir / "twimg.db")
 
     # ── DB query modes ────────────────────────────────────────────────────────
     if args.db_summary:
@@ -1052,9 +1201,13 @@ def main() -> None:
             print("Channel not found or no files.")
             return
         for row in rows:
-            size_str = f"{row['file_size']/1024/1024:.1f}MB" if row["file_size"] else "?"
+            size_str = (
+                f"{row['file_size'] / 1024 / 1024:.1f}MB" if row["file_size"] else "?"
+            )
             path_str = row["dest_path"] or "-"
-            print(f"  [{row['status']:9s}] {row['name']:50s}  {size_str:>8}  {path_str}")
+            print(
+                f"  [{row['status']:9s}] {row['name']:50s}  {size_str:>8}  {path_str}"
+            )
         return
 
     if not args.urls:

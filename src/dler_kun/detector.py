@@ -13,7 +13,9 @@ class DetectionRule:
         host = _normalized_host(url)
         if not host:
             return False
-        return any(host == domain or host.endswith(f".{domain}") for domain in self.domains)
+        return any(
+            host == domain or host.endswith(f".{domain}") for domain in self.domains
+        )
 
 
 class ServiceDetector:
@@ -24,7 +26,7 @@ class ServiceDetector:
             DetectionRule("gofile", ("gofile.io",)),
             DetectionRule("85xo", ("85xo.com",)),
             DetectionRule(
-                "dl",
+                "twimg",
                 (
                     "tweetfile.com",
                     "twimg-media.com",

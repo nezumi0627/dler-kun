@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from .detector import ServiceDetector
-from .engines.dl import DlEngine
+from .engines.twimg import TwimgEngine
 from .engines.gofile import GoFileEngine
 from .engines.xo85 import Xo85Engine
 from .factory import DownloaderFactory
@@ -44,7 +44,7 @@ class DlerKunApp:
 
     def _register_engines(self) -> None:
         engine_paths = self.config.get("engine_paths", {})
-        self.factory.register(DlEngine(engine_paths.get("dl") or None))
+        self.factory.register(TwimgEngine(engine_paths.get("twimg") or None))
         self.factory.register(
             GoFileEngine(
                 engine_paths.get("gofile") or None,
@@ -96,7 +96,9 @@ class DlerKunApp:
             )
             self.queue.update(queue_job.id, status=JobStatus.RUNNING)
             self.progress.update(queue_job.id, progress=0, state="running")
-            self.logs.info("Download started", engine_id=detected.engine_id, job_id=queue_job.id)
+            self.logs.info(
+                "Download started", engine_id=detected.engine_id, job_id=queue_job.id
+            )
             try:
                 self._raise_if_cancelled(queue_job.id)
                 result = detected.download(request)
@@ -240,6 +242,7 @@ class DlerKunApp:
             "errors": [],
             **extra,
         }
+
 
 def to_jsonable(value: Any) -> Any:
     if is_dataclass(value):

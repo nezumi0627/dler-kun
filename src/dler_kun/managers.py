@@ -33,7 +33,7 @@ class ConfigManager:
             "cookie": "",
             "user_agent": "",
             "engine_paths": {
-                "dl": os.environ.get("DLER_DL_PATH", ""),
+                "twimg": os.environ.get("DLER_TWIMG_PATH", ""),
                 "gofile": os.environ.get("DLER_GOFILE_PATH", ""),
                 "85xo": os.environ.get("DLER_85XO_PATH", ""),
             },
@@ -164,8 +164,10 @@ class DownloadCacheManager:
             return False
         path = Path(str(item.get("path") or ""))
         expected_size = int(item.get("size") or 0)
-        return path.exists() and path.stat().st_size > 0 and (
-            expected_size <= 0 or path.stat().st_size == expected_size
+        return (
+            path.exists()
+            and path.stat().st_size > 0
+            and (expected_size <= 0 or path.stat().st_size == expected_size)
         )
 
     def mark(
@@ -280,7 +282,9 @@ class QueueManager:
         self._cancelled: set[str] = set()
         self._lock = threading.Lock()
 
-    def create(self, kind: str, engine_id: str, title: str, output_dir: str) -> QueueJob:
+    def create(
+        self, kind: str, engine_id: str, title: str, output_dir: str
+    ) -> QueueJob:
         job = QueueJob(
             id=f"job-{uuid4().hex[:12]}",
             kind=kind,

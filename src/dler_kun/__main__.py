@@ -25,7 +25,7 @@ def build_parser() -> argparse.ArgumentParser:
     download.add_argument("--password")
 
     crawl = sub.add_parser("crawl", help="Run an existing engine crawler")
-    crawl.add_argument("service", choices=["85xo", "gofile", "dl"])
+    crawl.add_argument("service", choices=["85xo", "gofile", "twimg"])
     crawl.add_argument("--seed", action="append", default=[])
     crawl.add_argument("--days", type=int, default=10)
     crawl.add_argument("-o", "--output-dir", type=Path)

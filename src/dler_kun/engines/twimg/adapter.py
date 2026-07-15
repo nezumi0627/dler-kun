@@ -15,9 +15,9 @@ from ...models import (
 )
 
 
-class DlEngine(IDownloader):
-    engine_id = "dl"
-    display_name = "DL Engine"
+class TwimgEngine(IDownloader):
+    engine_id = "twimg"
+    display_name = "Twimg Engine"
     capabilities = EngineCapability(download=True, crawl=False, ranking=False)
 
     def __init__(self, project_path: str | Path | None = None) -> None:
@@ -28,7 +28,7 @@ class DlEngine(IDownloader):
             self.script_path = (
                 Path(__file__).resolve().parents[2]
                 / "vendor"
-                / "dl"
+                / "twimg"
                 / "download_twitter_media.py"
             )
             self.project_path = self.script_path.parent
@@ -46,7 +46,7 @@ class DlEngine(IDownloader):
                 job_id=request.job_id,
                 engine_id=self.engine_id,
                 status=JobStatus.FAILED,
-                message=f"dl script not found: {self.script_path}",
+                message=f"twimg script not found: {self.script_path}",
                 errors=["dependency_missing"],
             )
 
@@ -77,20 +77,22 @@ class DlEngine(IDownloader):
             errors="replace",
             check=False,
         )
-        output = "\n".join(part for part in (completed.stdout, completed.stderr) if part)
+        output = "\n".join(
+            part for part in (completed.stdout, completed.stderr) if part
+        )
         if completed.returncode == 0:
             return DownloadResult(
                 job_id=request.job_id,
                 engine_id=self.engine_id,
                 status=JobStatus.SUCCESS,
-                message="dl completed.",
+                message="twimg completed.",
                 metadata={"stdout": output[-8000:]},
             )
         return DownloadResult(
             job_id=request.job_id,
             engine_id=self.engine_id,
             status=JobStatus.FAILED,
-            message=f"dl failed with exit code {completed.returncode}.",
+            message=f"twimg failed with exit code {completed.returncode}.",
             errors=[output[-8000:] or "download_failed"],
         )
 
@@ -99,5 +101,5 @@ class DlEngine(IDownloader):
             job_id=request.job_id,
             engine_id=self.engine_id,
             status=JobStatus.UNSUPPORTED,
-            message="dl engine has no standalone crawler adapter.",
+            message="twimg engine has no standalone crawler adapter.",
         )

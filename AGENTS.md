@@ -10,7 +10,7 @@ Do not rewrite existing downloader internals.
 
 The original local projects are source references only:
 
-- `E:\projects\dl`
+- twimg downloader source
 - `E:\projects\gofile-downloader`
 - `E:\projects\85-xo`
 
