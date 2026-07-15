@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
+import subprocess
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -320,27 +322,68 @@ def download_item_robust(
     last_error: Exception | None = None
     for attempt in range(1, max(1, attempts) + 1):
         try:
-            with requests.get(
-                item.url,
-                headers=download_headers(item, config),
-                stream=True,
-                timeout=(10, read_timeout_seconds),
-            ) as response:
-                response.raise_for_status()
-                with part_path.open("wb") as file:
-                    for chunk in response.iter_content(chunk_size=config.chunk_size):
-                        if chunk:
-                            file.write(chunk)
+            headers = download_headers(item, config)
+            if shutil.which("curl"):
+                download_with_curl(item.url, part_path, headers, read_timeout_seconds)
+            else:
+                with requests.get(
+                    item.url,
+                    headers=headers,
+                    stream=True,
+                    timeout=(10, read_timeout_seconds),
+                ) as response:
+                    response.raise_for_status()
+                    with part_path.open("wb") as file:
+                        for chunk in response.iter_content(chunk_size=config.chunk_size):
+                            if chunk:
+                                file.write(chunk)
+            if not part_path.exists() or part_path.stat().st_size <= 0:
+                raise OSError("empty download")
             part_path.replace(target)
             print(f"[done] {target}")
             return True
-        except requests.RequestException as exc:
+        except (OSError, requests.RequestException, subprocess.SubprocessError) as exc:
             last_error = exc
             print(f"[warn] download attempt {attempt}/{attempts} failed: {item.url} ({exc})")
             part_path.unlink(missing_ok=True)
 
     print(f"[warn] download failed: {item.url} ({last_error})")
     return False
+
+
+def download_with_curl(
+    url: str,
+    output_path: Path,
+    headers: dict[str, str],
+    read_timeout_seconds: float,
+) -> None:
+    command = [
+        "curl",
+        "--fail",
+        "--location",
+        "--silent",
+        "--show-error",
+        "--connect-timeout",
+        "10",
+        "--max-time",
+        str(max(15, int(read_timeout_seconds))),
+        "--output",
+        str(output_path),
+    ]
+    for key, value in headers.items():
+        command.extend(["--header", f"{key}: {value}"])
+    command.append(url)
+    completed = subprocess.run(
+        command,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=max(20, int(read_timeout_seconds) + 10),
+        check=False,
+    )
+    if completed.returncode != 0:
+        raise OSError(completed.stderr.strip() or f"curl exit {completed.returncode}")
 
 
 def match_group(pattern: re.Pattern[str], text: str, group: str) -> str | None:
