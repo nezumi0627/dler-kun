@@ -96,21 +96,13 @@ class DlerKunApp:
             self.progress.update(queue_job.id, progress=0, state="running")
             self.logs.info("Download started", engine_id=detected.engine_id, job_id=queue_job.id)
             result = detected.download(request)
-            self.queue.update(
-                queue_job.id,
-                status=result.status,
-                progress=100 if result.status == JobStatus.SUCCESS else 0,
-                error="; ".join(result.errors),
+            self._finish_job(
+                result.job_id,
+                result.status,
+                result.message,
+                result.engine_id,
+                result.errors,
             )
-            self.progress.update(
-                queue_job.id,
-                progress=100 if result.status == JobStatus.SUCCESS else 0,
-                state=result.status.value,
-            )
-            if result.status == JobStatus.SUCCESS:
-                self.logs.success(result.message, engine_id=result.engine_id, job_id=result.job_id)
-            else:
-                self.logs.error(result.message, engine_id=result.engine_id, job_id=result.job_id)
             result_dict = to_jsonable(result)
             result_dict["url"] = url
             results.append(result_dict)
@@ -147,16 +139,13 @@ class DlerKunApp:
         self.queue.update(queue_job.id, status=JobStatus.RUNNING)
         self.logs.info("Crawl started", engine_id=engine.engine_id, job_id=queue_job.id)
         result = engine.crawl(request)
-        self.queue.update(
-            queue_job.id,
-            status=result.status,
-            progress=100 if result.status == JobStatus.SUCCESS else 0,
-            error="; ".join(result.errors),
+        self._finish_job(
+            result.job_id,
+            result.status,
+            result.message,
+            result.engine_id,
+            result.errors,
         )
-        if result.status == JobStatus.SUCCESS:
-            self.logs.success(result.message, engine_id=result.engine_id, job_id=result.job_id)
-        else:
-            self.logs.error(result.message, engine_id=result.engine_id, job_id=result.job_id)
         result_dict = to_jsonable(result)
         self.history.append({"kind": "crawl", **result_dict})
         return result_dict
@@ -171,6 +160,25 @@ class DlerKunApp:
             "config": self.config.as_dict(),
             "supported_domains": self.detector.supported_domains(),
         }
+
+    def _finish_job(
+        self,
+        job_id: str,
+        status: JobStatus,
+        message: str,
+        engine_id: str,
+        errors: list[str],
+    ) -> None:
+        progress = 100 if status == JobStatus.SUCCESS else 0
+        self.queue.update(
+            job_id,
+            status=status,
+            progress=progress,
+            error="; ".join(errors),
+        )
+        self.progress.update(job_id, progress=progress, state=status.value)
+        log = self.logs.success if status == JobStatus.SUCCESS else self.logs.error
+        log(message, engine_id=engine_id, job_id=job_id)
 
 
 def to_jsonable(value: Any) -> Any:

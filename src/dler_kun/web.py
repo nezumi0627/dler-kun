@@ -41,30 +41,40 @@ def build_handler(app: DlerKunApp):
             self.serve_static(parsed.path)
 
         def do_POST(self) -> None:  # noqa: N802 - stdlib hook name.
-            payload = self.read_json()
+            try:
+                payload = self.read_json()
+            except ValueError as exc:
+                self.send_json({"error": str(exc)}, status=400)
+                return
             if self.path == "/api/download":
                 urls = payload.get("urls") or []
                 if isinstance(urls, str):
                     urls = [line.strip() for line in urls.splitlines() if line.strip()]
-                self.send_json(
-                    app.download_urls(
-                        urls,
-                        output_dir=payload.get("output_dir") or None,
-                        options=payload.get("options") or {},
+                try:
+                    self.send_json(
+                        app.download_urls(
+                            urls,
+                            output_dir=payload.get("output_dir") or None,
+                            options=payload.get("options") or {},
+                        )
                     )
-                )
+                except Exception as exc:  # noqa: BLE001 - keep web server alive.
+                    self.send_json({"error": str(exc)}, status=500)
                 return
             if self.path == "/api/crawl":
-                self.send_json(
-                    app.crawl(
-                        payload.get("service", "85xo"),
-                        output_dir=payload.get("output_dir") or None,
-                        seeds=payload.get("seeds") or [],
-                        days=int(payload.get("days", 10)),
-                        download=bool(payload.get("download", False)),
-                        options=payload.get("options") or {},
+                try:
+                    self.send_json(
+                        app.crawl(
+                            payload.get("service", "85xo"),
+                            output_dir=payload.get("output_dir") or None,
+                            seeds=payload.get("seeds") or [],
+                            days=int(payload.get("days", 10)),
+                            download=bool(payload.get("download", False)),
+                            options=payload.get("options") or {},
+                        )
                     )
-                )
+                except Exception as exc:  # noqa: BLE001 - keep web server alive.
+                    self.send_json({"error": str(exc)}, status=500)
                 return
             self.send_error(404)
 
@@ -90,7 +100,13 @@ def build_handler(app: DlerKunApp):
             if length <= 0:
                 return {}
             raw = self.rfile.read(length)
-            return json.loads(raw.decode("utf-8"))
+            try:
+                payload = json.loads(raw.decode("utf-8"))
+            except json.JSONDecodeError as exc:
+                raise ValueError("invalid JSON payload") from exc
+            if not isinstance(payload, dict):
+                raise ValueError("JSON payload must be an object")
+            return payload
 
         def send_json(self, payload, status: int = 200) -> None:
             data = json.dumps(to_jsonable(payload), ensure_ascii=False).encode("utf-8")

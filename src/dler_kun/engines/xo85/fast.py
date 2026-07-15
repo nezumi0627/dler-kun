@@ -57,34 +57,68 @@ def crawl_fast(
     days: int,
     max_pages: int,
     timeout_seconds: float = 30.0,
+    resolve_workers: int = 6,
     now: datetime | None = None,
     fetcher: Callable[[str, float], str] | None = None,
 ) -> list[FastMediaItem]:
     fetcher = fetcher or fetch_html
     now = now or datetime.now(timezone.utc)
     candidates = discover_listing_items(seeds, days, max_pages, timeout_seconds, now, fetcher)
-    media_items: list[FastMediaItem] = []
-    for index, candidate in enumerate(candidates, start=1):
-        print(f"[fast-capture] {index}/{len(candidates)} {candidate.page_url}")
-        try:
-            video_html = fetcher(candidate.page_url, timeout_seconds)
-        except OSError as exc:
-            print(f"[warn] video page fetch failed: {candidate.page_url} ({exc})")
-            continue
-        media_url = select_best_media_url(video_html)
-        if not media_url:
-            print(f"[warn] media url not found: {candidate.page_url}")
-            continue
-        published_at = parse_video_published_at(video_html) or candidate.published_at
-        media_items.append(
-            FastMediaItem(
-                url=media_url,
-                source_page=candidate.page_url,
-                title=candidate.title,
-                published_at=published_at,
-            )
-        )
-    return media_items
+    return resolve_media_items(candidates, timeout_seconds, fetcher, resolve_workers)
+
+
+def resolve_media_items(
+    candidates: list[FastListingItem],
+    timeout_seconds: float,
+    fetcher: Callable[[str, float], str],
+    resolve_workers: int,
+) -> list[FastMediaItem]:
+    resolved: dict[int, FastMediaItem] = {}
+    max_workers = max(1, resolve_workers)
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {
+            executor.submit(
+                resolve_media_item,
+                index,
+                len(candidates),
+                candidate,
+                timeout_seconds,
+                fetcher,
+            ): index
+            for index, candidate in enumerate(candidates, start=1)
+        }
+        for future in as_completed(futures):
+            index = futures[future]
+            item = future.result()
+            if item is not None:
+                resolved[index] = item
+    return [resolved[index] for index in sorted(resolved)]
+
+
+def resolve_media_item(
+    index: int,
+    total: int,
+    candidate: FastListingItem,
+    timeout_seconds: float,
+    fetcher: Callable[[str, float], str],
+) -> FastMediaItem | None:
+    print(f"[fast-capture] {index}/{total} {candidate.page_url}")
+    try:
+        video_html = fetcher(candidate.page_url, timeout_seconds)
+    except OSError as exc:
+        print(f"[warn] video page fetch failed: {candidate.page_url} ({exc})")
+        return None
+    media_url = select_best_media_url(video_html)
+    if not media_url:
+        print(f"[warn] media url not found: {candidate.page_url}")
+        return None
+    published_at = parse_video_published_at(video_html) or candidate.published_at
+    return FastMediaItem(
+        url=media_url,
+        source_page=candidate.page_url,
+        title=candidate.title,
+        published_at=published_at,
+    )
 
 
 def discover_listing_items(
@@ -238,11 +272,14 @@ def parse_iso_datetime(value: str) -> datetime | None:
 
 
 def to_existing_media_items(items: Iterable[FastMediaItem], project_path: Path):
-    lib_path = str(project_path / "lib")
     import sys
 
-    if lib_path not in sys.path:
-        sys.path.insert(0, lib_path)
+    for candidate in (project_path, project_path / "lib"):
+        if (candidate / "xo_dler").exists():
+            path = str(candidate)
+            if path not in sys.path:
+                sys.path.insert(0, path)
+            break
     from xo_dler.models import MediaItem
 
     return [
@@ -267,6 +304,7 @@ def download_existing_items_parallel(
 
     config.output_dir.mkdir(parents=True, exist_ok=True)
     max_workers = max(1, max_workers)
+    curl_path = shutil.which("curl")
     downloaded: list[Path] = []
     tasks = []
 
@@ -289,6 +327,7 @@ def download_existing_items_parallel(
                 config,
                 read_timeout_seconds,
                 attempts,
+                curl_path,
             ): (item, target)
             for item, target in tasks
         }
@@ -310,13 +349,14 @@ def download_item_robust(
     config,
     read_timeout_seconds: float,
     attempts: int,
+    curl_path: str | None,
 ) -> bool:
     import requests
     from xo_dler.downloader import download_headers
 
     part_path = target.with_suffix(target.suffix + ".part")
     target.parent.mkdir(parents=True, exist_ok=True)
-    use_curl = bool(shutil.which("curl"))
+    use_curl = bool(curl_path)
     if part_path.exists() and not use_curl:
         part_path.unlink(missing_ok=True)
 
@@ -325,7 +365,7 @@ def download_item_robust(
         try:
             headers = download_headers(item, config)
             if use_curl:
-                download_with_curl(item.url, part_path, headers, read_timeout_seconds)
+                download_with_curl(curl_path, item.url, part_path, headers, read_timeout_seconds)
             else:
                 with requests.get(
                     item.url,
@@ -354,6 +394,7 @@ def download_item_robust(
 
 
 def download_with_curl(
+    curl_path: str,
     url: str,
     output_path: Path,
     headers: dict[str, str],
@@ -362,7 +403,7 @@ def download_with_curl(
     speed_time = max(10, int(read_timeout_seconds))
     max_time = max(60, speed_time * 6)
     command = [
-        "curl",
+        curl_path,
         "--fail",
         "--location",
         "--silent",

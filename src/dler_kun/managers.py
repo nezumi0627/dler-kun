@@ -8,6 +8,7 @@ from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
+from uuid import uuid4
 
 from .models import JobStatus, LogEvent, LogLevel, QueueJob
 
@@ -44,15 +45,15 @@ class ConfigManager:
         }
         if not self.path.exists():
             return default
-        with self.path.open("r", encoding="utf-8") as file:
-            user_config = json.load(file)
+        try:
+            with self.path.open("r", encoding="utf-8") as file:
+                user_config = json.load(file)
+        except (OSError, json.JSONDecodeError):
+            return default
         return _deep_merge(default, user_config)
 
     def save(self) -> None:
-        self.path.write_text(
-            json.dumps(self._config, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+        _atomic_write_json(self.path, self._config)
 
     def get(self, key: str, default: Any = None) -> Any:
         return self._config.get(key, default)
@@ -105,23 +106,26 @@ class LogManager:
 
 
 class HistoryManager:
-    def __init__(self, path: Path | None = None) -> None:
+    def __init__(self, path: Path | None = None, max_items: int = 5000) -> None:
         self.path = path or Path("history.json")
+        self._max_items = max_items
         self._lock = threading.Lock()
         self._items = self._load()
 
     def _load(self) -> list[dict[str, Any]]:
         if not self.path.exists():
             return []
-        return json.loads(self.path.read_text(encoding="utf-8"))
+        try:
+            payload = json.loads(self.path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return []
+        return payload if isinstance(payload, list) else []
 
     def append(self, item: dict[str, Any]) -> None:
         with self._lock:
             self._items.append(item)
-            self.path.write_text(
-                json.dumps(self._items, ensure_ascii=False, indent=2),
-                encoding="utf-8",
-            )
+            self._items = self._items[-self._max_items :]
+            _atomic_write_json(self.path, self._items)
 
     def list(self) -> list[dict[str, Any]]:
         with self._lock:
@@ -155,6 +159,9 @@ class ThreadPool:
 
     def submit(self, fn: Callable, *args: Any, **kwargs: Any):
         return self._executor.submit(fn, *args, **kwargs)
+
+    def shutdown(self) -> None:
+        self._executor.shutdown(wait=False, cancel_futures=True)
 
 
 class RetryManager:
@@ -199,7 +206,7 @@ class QueueManager:
 
     def create(self, kind: str, engine_id: str, title: str, output_dir: str) -> QueueJob:
         job = QueueJob(
-            id=f"job-{len(self._jobs) + 1}-{int(datetime.now().timestamp())}",
+            id=f"job-{uuid4().hex[:12]}",
             kind=kind,
             engine_id=engine_id,
             status=JobStatus.PENDING,
@@ -236,3 +243,13 @@ def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any
         else:
             merged[key] = value
     return merged
+
+
+def _atomic_write_json(path: Path, payload: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = path.with_suffix(path.suffix + ".tmp")
+    temp_path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    temp_path.replace(path)

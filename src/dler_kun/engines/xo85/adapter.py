@@ -123,6 +123,7 @@ class Xo85Engine(IDownloader):
             days=request.days,
             max_pages=int(request.options.get("max_pages", 50)),
             timeout_seconds=float(request.options.get("timeout_seconds", 30.0)),
+            resolve_workers=int(request.options.get("resolve_workers", 6)),
         )
         media_items = to_existing_media_items(fast_items, self.project_path)
         crawl_items = [self._to_crawl_item(item) for item in media_items]

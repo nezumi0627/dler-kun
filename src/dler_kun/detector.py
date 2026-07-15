@@ -10,7 +10,7 @@ class DetectionRule:
     domains: tuple[str, ...]
 
     def matches(self, url: str) -> bool:
-        host = urlparse(url).netloc.lower()
+        host = _normalized_host(url)
         if not host:
             return False
         return any(host == domain or host.endswith(f".{domain}") for domain in self.domains)
@@ -41,3 +41,13 @@ class ServiceDetector:
 
     def supported_domains(self) -> dict[str, list[str]]:
         return {rule.engine_id: list(rule.domains) for rule in self._rules}
+
+
+def _normalized_host(url: str) -> str:
+    value = url.strip()
+    if not value:
+        return ""
+    parsed = urlparse(value)
+    if not parsed.netloc and "://" not in value:
+        parsed = urlparse(f"https://{value}")
+    return (parsed.hostname or "").lower()
