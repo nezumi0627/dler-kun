@@ -1,6 +1,6 @@
 # dler-kun
 
-`dler-kun` は、複数の既存ダウンローダーを 1 つの UI、1 つの設定、1 つのキューで扱う統合ダウンロードプラットフォームです。
+`dler-kun` は、複数の既存ダウンローダーを 1 つの CLI、1 つの設定、1 つのキューで扱う統合ダウンロードツールです。
 
 ## 対応エンジン
 
@@ -10,7 +10,7 @@
 
 ## 最重要方針
 
-既存ダウンロード処理、暗号化、クロール、保存、リトライなどの内部ロジックは変更しません。`dler-kun` 側は Service Detector、Factory、Manager、Engine Adapter、UI だけを担当します。
+既存ダウンロード処理、暗号化、クロール、保存、リトライなどの内部ロジックは変更しません。`dler-kun` 側は Service Detector、Factory、Manager、Engine Adapter、CLI だけを担当します。
 
 ```text
 URL / Crawl Request
@@ -26,8 +26,7 @@ URL / Crawl Request
 ```powershell
 cd E:\projects\dler-kun
 python -m venv .venv
-.\.venv\Scripts\python -m pip install -e .[dev,web]
-npm install
+.\.venv\Scripts\python -m pip install -e .[dev]
 ```
 
 既存プロジェクトの処理は `src/dler_kun/vendor/` に取り込み済みです。通常利用では `E:\projects\dl`、`E:\projects\gofile-downloader`、`E:\projects\85-xo` は不要です。
@@ -45,36 +44,11 @@ python -m dler_kun download https://tweetfile.com/example https://gofile.io/d/ex
 
 # 85xoを10日前まで高速クロールしてダウンロード
 python -m dler_kun crawl 85xo --days 10 --download --method fast --parallel-downloads 4 --download-read-timeout 30 --download-attempts 2
-
-# Web UI
-python -m dler_kun web
-
-# Desktop UI (Tauri + React)
-npm run desktop:dev
 ```
 
-## Desktop UI
-
-`npm run desktop:dev` で Tauri v2 + React + Vite の軽量デスクトップアプリを起動できます。Tauri 側が Python Web API を `127.0.0.1:8787` で裏起動し、React UI は snapshot を定期更新して状態を表示します。
-
-- Home: URL投入、出力先、実行状況サマリー
-- Downloads: 進捗、速度、ETA、現在ファイル、ジョブ状態
-- Crawl: 85xo fast crawl、収集のみ/収集してDL
-- Cache: `download_cache.json` の complete/partial/corrupt/failed と保存先
-- Logs/Settings: 実行ログと設定確認
+## Cache
 
 完全DL済みのファイルは `download_cache.json` と metadata sidecar を根拠に次回 skip します。途中終了や破損扱いの `.part` / 対象ファイルは次回実行前に破棄して、最初から再DLします。
-
-## Web UI
-
-`python -m dler_kun web` を実行すると、ローカル Web UI が起動します。
-
-- Home: URL入力、現在速度、待機/完了/失敗、実行中 Engine
-- Downloads: 進捗、速度、残り時間、保存先、Engine
-- Crawl: 期間指定、収集結果、複数選択、一括ダウンロード
-- Ranking: Engine の既存ランキング機能がある場合に表示
-- History: 過去ジョブの検索、フィルター
-- Settings: 保存先、Thread、Proxy、Cookie、User-Agent、Retry
 
 ## テスト
 

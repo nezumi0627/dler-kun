@@ -2,7 +2,7 @@
 
 ## Project Mission
 
-`dler-kun` integrates mature downloader projects behind one detector, queue, UI, and configuration surface.
+`dler-kun` integrates mature downloader projects behind one detector, queue, CLI, and configuration surface.
 
 ## Non-Negotiable Rule
 
@@ -20,7 +20,7 @@ Use Adapter, Facade, Wrapper, or subprocess boundaries inside `dler-kun`. If a c
 
 ## Architecture Rules
 
-- UI calls application services only.
+- CLI calls application services only.
 - `ServiceDetector` owns URL/service detection.
 - `DownloaderFactory` owns engine lookup and registration.
 - Each engine implements `IDownloader`.
@@ -38,7 +38,7 @@ Each engine should expose these capabilities when supported:
 - `get_metadata(url) -> Metadata`
 - `login(settings) -> LoginResult`
 
-Unsupported features must return a common unsupported result, not raise raw implementation-specific exceptions to the UI.
+Unsupported features must return a common unsupported result, not raise raw implementation-specific exceptions to the CLI.
 
 ## Error Handling
 

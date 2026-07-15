@@ -5,7 +5,6 @@ import json
 from pathlib import Path
 
 from .app import DlerKunApp, to_jsonable
-from .web import run_web_server
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -43,11 +42,6 @@ def build_parser() -> argparse.ArgumentParser:
     crawl.add_argument("--parallel-downloads", type=int, default=4)
     crawl.add_argument("--download-read-timeout", type=float, default=30.0)
     crawl.add_argument("--download-attempts", type=int, default=2)
-
-    web = sub.add_parser("web", help="Run local Web UI")
-    web.add_argument("--host", default="127.0.0.1")
-    web.add_argument("--port", type=int, default=8787)
-    web.add_argument("--no-open", action="store_true")
 
     config = sub.add_parser("config", help="Print effective config")
     config.add_argument("--save", action="store_true", help="Write default config.json")
@@ -113,10 +107,6 @@ def main() -> None:
                 options=options,
             )
         )
-        return
-
-    if args.command == "web":
-        run_web_server(app, args.host, args.port, open_browser=not args.no_open)
         return
 
     if args.command == "config":

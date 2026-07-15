@@ -15,6 +15,7 @@ class JobStatus(str, Enum):
     FAILED = "failed"
     SKIPPED = "skipped"
     UNSUPPORTED = "unsupported"
+    CANCELLED = "cancelled"
 
 
 class CacheStatus(str, Enum):

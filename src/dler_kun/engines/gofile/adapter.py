@@ -63,7 +63,7 @@ class GoFileEngine(IDownloader):
             result = await downloader.download(
                 request.url,
                 password=request.options.get("password"),
-                output_dir=str(request.output_dir),
+                output_dir=str(self._download_root(request)),
             )
 
         status = result.get("status")
@@ -114,3 +114,9 @@ class GoFileEngine(IDownloader):
         project = str(self.project_path)
         if project not in sys.path:
             sys.path.insert(0, project)
+
+    def _download_root(self, request: DownloadRequest) -> Path:
+        output_dir = request.output_dir
+        if output_dir.name.lower() == self.engine_id:
+            return output_dir
+        return output_dir / self.engine_id

@@ -19,10 +19,12 @@ from .managers import (
     ProxyManager,
     QueueManager,
     RetryManager,
-    ThreadPool,
-    UpdateChecker,
 )
 from .models import CrawlRequest, DownloadRequest, JobStatus
+
+
+class JobCancelled(RuntimeError):
+    """Raised internally when a user cancels a running job."""
 
 
 class DlerKunApp:
@@ -36,8 +38,6 @@ class DlerKunApp:
         self.proxy = ProxyManager(self.config)
         self.cookies = CookieManager(self.config)
         self.retry = RetryManager(int(self.config.get("retry", 2)))
-        self.thread_pool = ThreadPool(int(self.config.get("threads", 3)))
-        self.update_checker = UpdateChecker()
         self.detector = ServiceDetector()
         self.factory = DownloaderFactory(self.detector)
         self._register_engines()
@@ -97,7 +97,20 @@ class DlerKunApp:
             self.queue.update(queue_job.id, status=JobStatus.RUNNING)
             self.progress.update(queue_job.id, progress=0, state="running")
             self.logs.info("Download started", engine_id=detected.engine_id, job_id=queue_job.id)
-            result = detected.download(request)
+            try:
+                self._raise_if_cancelled(queue_job.id)
+                result = detected.download(request)
+                self._raise_if_cancelled(queue_job.id)
+            except JobCancelled:
+                result_dict = self._cancel_result(
+                    queue_job.id,
+                    detected.engine_id,
+                    "Download cancelled",
+                    url=url,
+                )
+                results.append(result_dict)
+                self.history.append({"kind": "download", **result_dict})
+                continue
             self._finish_job(
                 result.job_id,
                 result.status,
@@ -147,7 +160,19 @@ class DlerKunApp:
         )
         self.queue.update(queue_job.id, status=JobStatus.RUNNING)
         self.logs.info("Crawl started", engine_id=engine.engine_id, job_id=queue_job.id)
-        result = engine.crawl(request)
+        try:
+            self._raise_if_cancelled(queue_job.id)
+            result = engine.crawl(request)
+            self._raise_if_cancelled(queue_job.id)
+        except JobCancelled:
+            result_dict = self._cancel_result(
+                queue_job.id,
+                engine.engine_id,
+                "Crawl cancelled",
+                service=service,
+            )
+            self.history.append({"kind": "crawl", **result_dict})
+            return result_dict
         self._finish_job(
             result.job_id,
             result.status,
@@ -159,21 +184,6 @@ class DlerKunApp:
         self.history.append({"kind": "crawl", **result_dict})
         return result_dict
 
-    def snapshot(self) -> dict[str, Any]:
-        return {
-            "engines": self.factory.list_engines(),
-            "queue": self.queue.list(),
-            "history": self.history.list(),
-            "logs": self.logs.list(),
-            "progress": self.progress.list(),
-            "config": self.config.as_dict(),
-            "cache": {
-                "summary": self.cache.summary(),
-                "items": self.cache.list()[-200:],
-            },
-            "supported_domains": self.detector.supported_domains(),
-        }
-
     def _finish_job(
         self,
         job_id: str,
@@ -182,6 +192,9 @@ class DlerKunApp:
         engine_id: str,
         errors: list[str],
     ) -> None:
+        if self.queue.is_cancelled(job_id):
+            self._cancel_result(job_id, engine_id, message or "Job cancelled")
+            return
         progress = 100 if status == JobStatus.SUCCESS else 0
         self.queue.update(
             job_id,
@@ -194,6 +207,7 @@ class DlerKunApp:
         log(message, engine_id=engine_id, job_id=job_id)
 
     def _update_job_progress(self, job_id: str, state: dict[str, Any]) -> None:
+        self._raise_if_cancelled(job_id)
         self.progress.update(job_id, **state)
         self.queue.update(
             job_id,
@@ -201,36 +215,31 @@ class DlerKunApp:
             speed=str(state.get("speed", "") or ""),
             eta=str(state.get("eta", "") or ""),
         )
+        self._raise_if_cancelled(job_id)
 
-    def start_download_urls(
+    def _raise_if_cancelled(self, job_id: str) -> None:
+        if self.queue.is_cancelled(job_id):
+            raise JobCancelled(job_id)
+
+    def _cancel_result(
         self,
-        urls: list[str],
-        output_dir: str | Path | None = None,
-        options: dict[str, Any] | None = None,
+        job_id: str,
+        engine_id: str,
+        message: str,
+        **extra: Any,
     ) -> dict[str, Any]:
-        future = self.thread_pool.submit(self.download_urls, urls, output_dir, options)
-        return {"started": True, "kind": "download", "future": str(id(future))}
-
-    def start_crawl(
-        self,
-        service: str,
-        output_dir: str | Path | None = None,
-        seeds: list[str] | None = None,
-        days: int = 10,
-        download: bool = False,
-        options: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
-        future = self.thread_pool.submit(
-            self.crawl,
-            service,
-            output_dir,
-            seeds,
-            days,
-            download,
-            options,
-        )
-        return {"started": True, "kind": "crawl", "future": str(id(future))}
-
+        self.queue.cancel(job_id)
+        self.progress.update(job_id, progress=0, state=JobStatus.CANCELLED.value)
+        self.logs.warning(message, engine_id=engine_id, job_id=job_id)
+        return {
+            "job_id": job_id,
+            "engine_id": engine_id,
+            "status": JobStatus.CANCELLED.value,
+            "message": message,
+            "files": [],
+            "errors": [],
+            **extra,
+        }
 
 def to_jsonable(value: Any) -> Any:
     if is_dataclass(value):

@@ -28,6 +28,7 @@ class ConfigManager:
             "threads": 3,
             "timeout": 30,
             "retry": 2,
+            "language": "ja",
             "proxy": "",
             "cookie": "",
             "user_agent": "",
@@ -60,6 +61,11 @@ class ConfigManager:
 
     def set(self, key: str, value: Any) -> None:
         self._config[key] = value
+
+    def update(self, values: dict[str, Any]) -> dict[str, Any]:
+        self._config = _deep_merge(self._config, values)
+        self.save()
+        return self.as_dict()
 
     def as_dict(self) -> dict[str, Any]:
         return dict(self._config)
@@ -271,6 +277,7 @@ class UpdateChecker:
 class QueueManager:
     def __init__(self) -> None:
         self._jobs: dict[str, QueueJob] = {}
+        self._cancelled: set[str] = set()
         self._lock = threading.Lock()
 
     def create(self, kind: str, engine_id: str, title: str, output_dir: str) -> QueueJob:
@@ -298,6 +305,38 @@ class QueueManager:
                     setattr(job, key, value)
             job.updated_at = utc_now()
             return job
+
+    def cancel(self, job_id: str) -> QueueJob | None:
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if not job:
+                return None
+            self._cancelled.add(job_id)
+            job.status = JobStatus.CANCELLED
+            job.error = "cancelled"
+            job.updated_at = utc_now()
+            return job
+
+    def cancel_all(self) -> list[QueueJob]:
+        with self._lock:
+            jobs = list(self._jobs.values())
+            for job in jobs:
+                if job.status not in {
+                    JobStatus.SUCCESS,
+                    JobStatus.FAILED,
+                    JobStatus.SKIPPED,
+                    JobStatus.UNSUPPORTED,
+                    JobStatus.CANCELLED,
+                }:
+                    self._cancelled.add(job.id)
+                    job.status = JobStatus.CANCELLED
+                    job.error = "cancelled"
+                    job.updated_at = utc_now()
+            return jobs
+
+    def is_cancelled(self, job_id: str) -> bool:
+        with self._lock:
+            return job_id in self._cancelled
 
     def list(self) -> list[dict[str, Any]]:
         with self._lock:

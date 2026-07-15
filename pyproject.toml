@@ -17,7 +17,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-web = []
 gofile = [
     "playwright>=1.40.0",
 ]

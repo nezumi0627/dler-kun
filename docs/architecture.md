@@ -5,8 +5,8 @@
 ## Responsibility Flow
 
 ```text
-UI
-  -> Application API / CLI
+CLI
+  -> Application services
   -> ServiceDetector
   -> DownloaderFactory
   -> IDownloader Engine

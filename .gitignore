@@ -8,19 +8,13 @@ __pycache__/
 .venv/
 venv/
 
-# Node / UI tooling
-node_modules/
-dist/
-build/
-.vite/
-src-tauri/target/
-
 # App runtime data
 config.json
 history.json
 download_cache.json
 downloads/
 logs/
+tmp/
 *.db
 *.db-*
 *.part
