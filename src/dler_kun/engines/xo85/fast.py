@@ -358,7 +358,7 @@ def download_with_curl(
     read_timeout_seconds: float,
 ) -> None:
     speed_time = max(10, int(read_timeout_seconds))
-    max_time = max(3600, speed_time * 30)
+    max_time = max(60, speed_time * 6)
     command = [
         "curl",
         "--fail",
