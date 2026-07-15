@@ -357,6 +357,8 @@ def download_with_curl(
     headers: dict[str, str],
     read_timeout_seconds: float,
 ) -> None:
+    speed_time = max(10, int(read_timeout_seconds))
+    max_time = max(3600, speed_time * 30)
     command = [
         "curl",
         "--fail",
@@ -365,8 +367,12 @@ def download_with_curl(
         "--show-error",
         "--connect-timeout",
         "10",
+        "--speed-limit",
+        "1024",
+        "--speed-time",
+        str(speed_time),
         "--max-time",
-        str(max(15, int(read_timeout_seconds))),
+        str(max_time),
         "--output",
         str(output_path),
     ]
@@ -379,7 +385,7 @@ def download_with_curl(
         text=True,
         encoding="utf-8",
         errors="replace",
-        timeout=max(20, int(read_timeout_seconds) + 10),
+        timeout=max_time + 10,
         check=False,
     )
     if completed.returncode != 0:
