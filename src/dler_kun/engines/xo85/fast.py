@@ -316,14 +316,15 @@ def download_item_robust(
 
     part_path = target.with_suffix(target.suffix + ".part")
     target.parent.mkdir(parents=True, exist_ok=True)
-    if part_path.exists():
+    use_curl = bool(shutil.which("curl"))
+    if part_path.exists() and not use_curl:
         part_path.unlink(missing_ok=True)
 
     last_error: Exception | None = None
     for attempt in range(1, max(1, attempts) + 1):
         try:
             headers = download_headers(item, config)
-            if shutil.which("curl"):
+            if use_curl:
                 download_with_curl(item.url, part_path, headers, read_timeout_seconds)
             else:
                 with requests.get(
@@ -345,7 +346,8 @@ def download_item_robust(
         except (OSError, requests.RequestException, subprocess.SubprocessError) as exc:
             last_error = exc
             print(f"[warn] download attempt {attempt}/{attempts} failed: {item.url} ({exc})")
-            part_path.unlink(missing_ok=True)
+            if not use_curl:
+                part_path.unlink(missing_ok=True)
 
     print(f"[warn] download failed: {item.url} ({last_error})")
     return False
@@ -365,6 +367,8 @@ def download_with_curl(
         "--location",
         "--silent",
         "--show-error",
+        "--continue-at",
+        "-",
         "--connect-timeout",
         "10",
         "--speed-limit",
