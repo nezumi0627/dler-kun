@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -34,7 +35,9 @@ class Xo85Engine(IDownloader):
         return "85xo.com" in url.lower()
 
     def download(self, request: DownloadRequest) -> DownloadResult:
-        if self._is_direct_media_url(request.url) or self._is_video_page_url(request.url):
+        if self._is_direct_media_url(request.url) or self._is_video_page_url(
+            request.url
+        ):
             return self._download_direct(request)
         crawl_request = CrawlRequest(
             service=self.engine_id,
@@ -84,7 +87,7 @@ class Xo85Engine(IDownloader):
                 browser_path=request.options.get("browser_path"),
             )
             if user_agent:
-                crawl_config.user_agent = user_agent
+                crawl_config = replace(crawl_config, user_agent=user_agent)
             media_items = crawl_once(crawl_config)
             crawl_items = [self._to_crawl_item(item) for item in media_items]
             files: list[str] = []
@@ -96,7 +99,7 @@ class Xo85Engine(IDownloader):
                     skip_existing=not bool(request.options.get("overwrite", False)),
                 )
                 if user_agent:
-                    download_config.user_agent = user_agent
+                    download_config = replace(download_config, user_agent=user_agent)
                 files = [
                     str(path) for path in download_items(media_items, download_config)
                 ]
@@ -163,7 +166,7 @@ class Xo85Engine(IDownloader):
                 skip_existing=not bool(request.options.get("overwrite", False)),
             )
             if user_agent:
-                download_config.user_agent = user_agent
+                download_config = replace(download_config, user_agent=user_agent)
             files = [
                 str(path)
                 for path in download_existing_items_parallel(
@@ -246,7 +249,7 @@ class Xo85Engine(IDownloader):
                 skip_existing=not bool(request.options.get("force", False)),
             )
             if user_agent:
-                download_config.user_agent = user_agent
+                download_config = replace(download_config, user_agent=user_agent)
             files = [
                 str(path)
                 for path in download_existing_items_parallel(
@@ -263,7 +266,11 @@ class Xo85Engine(IDownloader):
                     cache_manager=request.options.get("cache_manager"),
                 )
             ]
-            status = JobStatus.SUCCESS if len(files) == len(media_items) else JobStatus.FAILED
+            status = (
+                JobStatus.SUCCESS
+                if len(files) == len(media_items)
+                else JobStatus.FAILED
+            )
             errors = [] if status == JobStatus.SUCCESS else ["download_failed"]
             return DownloadResult(
                 job_id=request.job_id,
@@ -272,7 +279,10 @@ class Xo85Engine(IDownloader):
                 message=f"85xo direct download completed: {len(files)}/{len(media_items)} file(s).",
                 files=files,
                 errors=errors,
-                metadata={"direct": True, "items": [item.__dict__ for item in fast_items]},
+                metadata={
+                    "direct": True,
+                    "items": [item.__dict__ for item in fast_items],
+                },
             )
         except ModuleNotFoundError as exc:
             return DownloadResult(

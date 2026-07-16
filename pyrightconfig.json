@@ -1,0 +1,15 @@
+{
+  "include": ["src/dler_kun", "tests"],
+  "exclude": [
+    "src/dler_kun/vendor",
+    "**/__pycache__",
+    ".venv"
+  ],
+  "extraPaths": [
+    "src",
+    "src/dler_kun/vendor/gofile",
+    "src/dler_kun/vendor/xo85"
+  ],
+  "pythonVersion": "3.10",
+  "typeCheckingMode": "basic"
+}

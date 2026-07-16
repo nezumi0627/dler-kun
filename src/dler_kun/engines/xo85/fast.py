@@ -409,7 +409,9 @@ def download_existing_items_parallel(
             target.unlink(missing_ok=True)
             if cache:
                 cache.mark(cache_key, item.url, target, CacheStatus.CORRUPT, "85xo")
-        elif part_path.exists() and not should_keep_partial_after_failure(part_path, bool(curl_path)):
+        elif part_path.exists() and not should_keep_partial_after_failure(
+            part_path, bool(curl_path)
+        ):
             part_path.unlink(missing_ok=True)
             if cache:
                 cache.mark(cache_key, item.url, part_path, CacheStatus.CORRUPT, "85xo")
