@@ -240,9 +240,7 @@ class ProgressManager:
         self._lock = threading.Lock()
         self._started_at: dict[str, float] = {}
         self._stream = stream
-        self._live_enabled = (
-            is_interactive_tty(stream) if live is None else bool(live)
-        )
+        self._live_enabled = is_interactive_tty(stream) if live is None else bool(live)
         self._panel: LivePanel | None = None
         if self._live_enabled:
             enable_windows_ansi()
@@ -439,7 +437,9 @@ def _normalize_gofile_config(config: dict[str, Any]) -> dict[str, Any]:
 
     ranking_seeds = gofile.get("ranking_seeds")
     if isinstance(ranking_seeds, str):
-        gofile["ranking_seeds"] = [ranking_seeds.strip()] if ranking_seeds.strip() else []
+        gofile["ranking_seeds"] = (
+            [ranking_seeds.strip()] if ranking_seeds.strip() else []
+        )
     elif isinstance(ranking_seeds, (tuple, list)):
         gofile["ranking_seeds"] = [
             str(seed).strip() for seed in ranking_seeds if str(seed).strip()

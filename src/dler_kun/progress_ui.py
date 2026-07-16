@@ -248,7 +248,11 @@ def render_line(snap: ProgressSnapshot, columns: int | None = None) -> str:
     elapsed = max(0.0, snap.elapsed)
     speed = current / elapsed if elapsed >= 0.05 else 0.0
     remaining = max(0.0, total - current) if total > 0 else 0.0
-    eta = (remaining / speed) if speed > 0 and not snap.done else (0.0 if snap.done else None)
+    eta = (
+        (remaining / speed)
+        if speed > 0 and not snap.done
+        else (0.0 if snap.done else None)
+    )
 
     if snap.done and snap.ok:
         mark = f"{C.GREEN}{C.BOLD}✓{C.RESET}"
@@ -325,10 +329,7 @@ def snapshot_from_state(
                 pass
 
     resolved_label = label or str(
-        state.get("current_file")
-        or state.get("label")
-        or state.get("state")
-        or ""
+        state.get("current_file") or state.get("label") or state.get("state") or ""
     )
     return ProgressSnapshot(
         current=current,
@@ -336,7 +337,8 @@ def snapshot_from_state(
         elapsed=float(state.get("elapsed", elapsed) or elapsed),
         label=resolved_label,
         unit=unit,
-        done=done or str(state.get("state", "")).lower()
+        done=done
+        or str(state.get("state", "")).lower()
         in {"success", "failed", "cancelled", "complete", "completed"},
         ok=ok,
     )

@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import io
+import re
 import sys
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 from ...engine import IDownloader
 from ...models import (
@@ -35,6 +38,8 @@ __all__ = [
     "fetch_douga_urls",
     "scrape_lab_sources",
 ]
+
+_GOFILE_ID_RE = re.compile(r"gofile\.io/d/([A-Za-z0-9]+)", re.I)
 
 
 class GoFileEngine(IDownloader):
@@ -76,35 +81,65 @@ class GoFileEngine(IDownloader):
     async def _download_async(self, request: DownloadRequest) -> DownloadResult:
         self._ensure_path()
         import aiohttp
-        from gofile_dl.downloader import GoFileDownloader
+        from gofile_dl.downloader import GoFileDownloader  # type: ignore[import-not-found]
 
         timeout = aiohttp.ClientTimeout(total=None)
         password = request.options.get("password")
         output_dir = str(self._download_root(request))
+        progress_callback = request.options.get("progress_callback")
+        label = _content_label(request.url)
 
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            result = await self._download_with_session(
-                session,
-                GoFileDownloader,
-                url=request.url,
-                password=password,
-                output_dir=output_dir,
+        if progress_callback:
+            progress_callback(
+                {
+                    "completed_files": 0,
+                    "total_files": 1,
+                    "current_file": label,
+                    "state": "downloading",
+                }
             )
-            # Stale guest tokens in tokens.json often return HTTP 401.
-            # Invalidate and retry once with a fresh guest account (wrapper-side).
-            if _is_unauthorized_result(result):
-                fresh_token = await self._refresh_guest_token(session)
-                if fresh_token:
-                    result = await self._download_with_session(
-                        session,
-                        GoFileDownloader,
-                        url=request.url,
-                        password=password,
-                        output_dir=output_dir,
-                        token=fresh_token,
-                    )
 
-        return self._download_result_from_payload(request, result)
+        with _suppress_gofile_rich_ui():
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                result = await self._download_with_session(
+                    session,
+                    GoFileDownloader,
+                    url=request.url,
+                    password=password,
+                    output_dir=output_dir,
+                )
+                # Stale guest tokens in tokens.json often return HTTP 401.
+                # Invalidate and retry once with a fresh guest account (wrapper-side).
+                if _is_unauthorized_result(result):
+                    fresh_token = await self._refresh_guest_token(session)
+                    if fresh_token:
+                        result = await self._download_with_session(
+                            session,
+                            GoFileDownloader,
+                            url=request.url,
+                            password=password,
+                            output_dir=output_dir,
+                            token=fresh_token,
+                        )
+
+        download_result = self._download_result_from_payload(request, result)
+        if progress_callback:
+            done = max(1, len(download_result.files)) if download_result.files else 0
+            total = max(1, done)
+            progress_callback(
+                {
+                    "completed_files": done
+                    if download_result.status == JobStatus.SUCCESS
+                    else done,
+                    "total_files": total,
+                    "current_file": label,
+                    "progress": 100
+                    if download_result.status == JobStatus.SUCCESS
+                    else 0,
+                    "state": download_result.status.value,
+                }
+            )
+        return download_result
 
     async def _download_with_session(
         self,
@@ -127,7 +162,7 @@ class GoFileEngine(IDownloader):
     async def _refresh_guest_token(self, session: Any) -> str | None:
         """Invalidate the cached guest token and mint a new one."""
         try:
-            from gofile_dl.token.token_manager import TokenManager
+            from gofile_dl.token.token_manager import TokenManager  # type: ignore[import-not-found]
         except Exception:
             return None
 
@@ -143,7 +178,7 @@ class GoFileEngine(IDownloader):
         except Exception:
             # Fall back to a one-shot guest account via the content API path.
             try:
-                from gofile_dl.downloader.go_file_api import GoFileAPI
+                from gofile_dl.downloader.go_file_api import GoFileAPI  # type: ignore[import-not-found]
 
                 api = GoFileAPI(session, proxy=self.proxy)
                 return await api._create_guest_account()
@@ -156,14 +191,16 @@ class GoFileEngine(IDownloader):
         result: dict[str, Any],
     ) -> DownloadResult:
         status = result.get("status")
+        files = _normalize_downloaded_files(result.get("files") or [])
         if status == "success":
+            count = len(files)
             return DownloadResult(
                 job_id=request.job_id,
                 engine_id=self.engine_id,
                 status=JobStatus.SUCCESS,
-                message=result.get("message") or "GoFile download completed.",
-                files=[str(path) for path in result.get("files", [])],
-                errors=[str(error) for error in result.get("errors", [])],
+                message=f"Downloaded {count} file(s).",
+                files=files,
+                errors=[],
                 metadata=result,
             )
 
@@ -184,6 +221,7 @@ class GoFileEngine(IDownloader):
             engine_id=self.engine_id,
             status=JobStatus.FAILED,
             message=message,
+            files=files,
             errors=errors,
             metadata=result,
         )
@@ -322,7 +360,11 @@ class GoFileEngine(IDownloader):
             )
 
         # Partial source failures must not look like full SUCCESS (blocks retry).
-        status = JobStatus.FAILED if retryable.intersection(unique_errors) else JobStatus.SUCCESS
+        status = (
+            JobStatus.FAILED
+            if retryable.intersection(unique_errors)
+            else JobStatus.SUCCESS
+        )
 
         files: list[str] = []
         if request.download and items:
@@ -353,11 +395,15 @@ class GoFileEngine(IDownloader):
                     else:
                         unique_errors = sorted(set(unique_errors + ["download_failed"]))
             if progress_callback:
-                progress_callback({"progress": 100, "state": "downloading", "eta": f"{total}/{total}"})
+                progress_callback(
+                    {"progress": 100, "state": "downloading", "eta": f"{total}/{total}"}
+                )
 
         message = f"GoFile ranking completed: {len(items)} item(s)."
         if request.download:
-            message = f"GoFile ranking download completed: {len(files)}/{len(items)} file(s)."
+            message = (
+                f"GoFile ranking download completed: {len(files)}/{len(items)} file(s)."
+            )
         if unique_errors and status == JobStatus.FAILED:
             message = f"{message} errors={','.join(unique_errors)}"
 
@@ -394,6 +440,63 @@ def _is_unauthorized_result(result: dict[str, Any]) -> bool:
     message = str(result.get("message") or "")
     lowered = message.lower()
     return "unauthorized" in lowered or "アクセス権" in message
+
+
+def _content_label(url: str) -> str:
+    match = _GOFILE_ID_RE.search(str(url))
+    if match:
+        return match.group(1)
+    return str(url).strip() or "gofile"
+
+
+def _normalize_downloaded_files(files: list[Any]) -> list[str]:
+    paths: list[str] = []
+    for item in files:
+        if isinstance(item, dict):
+            path = item.get("path") or item.get("filename") or ""
+        else:
+            path = item
+        text = str(path).strip()
+        if text:
+            paths.append(text)
+    return paths
+
+
+@contextmanager
+def _suppress_gofile_rich_ui() -> Iterator[None]:
+    """Silence vendored Rich panels so dler-kun's progress bar stays clean."""
+    try:
+        from importlib import import_module
+
+        from rich.console import Console
+
+        _ensure_gofile_vendor_on_path()
+        file_downloader = import_module("gofile_dl.downloader.file_downloader")
+        go_file_downloader = import_module("gofile_dl.downloader.go_file_downloader")
+    except Exception:
+        yield
+        return
+
+    sink = io.StringIO()
+    quiet = Console(file=sink, force_terminal=False, no_color=True, quiet=True)
+    originals = (
+        getattr(go_file_downloader, "console"),
+        getattr(file_downloader, "console"),
+    )
+    setattr(go_file_downloader, "console", quiet)
+    setattr(file_downloader, "console", quiet)
+    try:
+        yield
+    finally:
+        setattr(go_file_downloader, "console", originals[0])
+        setattr(file_downloader, "console", originals[1])
+
+
+def _ensure_gofile_vendor_on_path() -> None:
+    vendor = Path(__file__).resolve().parents[2] / "vendor" / "gofile"
+    path = str(vendor)
+    if path not in sys.path:
+        sys.path.insert(0, path)
 
 
 async def collect_douga_urls(

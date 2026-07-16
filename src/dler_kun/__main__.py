@@ -41,10 +41,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     crawl = sub.add_parser("crawl", help="Crawl an engine and optionally download")
     crawl.add_argument("service", choices=["85xo", "gofile"])
-    crawl.add_argument("--seed", action="append", default=[], help="Override crawl seed URL")
+    crawl.add_argument(
+        "--seed", action="append", default=[], help="Override crawl seed URL"
+    )
     crawl.add_argument("--days", type=int, help="Lookback window in days (85xo)")
     crawl.add_argument("-o", "--output-dir", type=Path)
-    crawl.add_argument("--download", action="store_true", help="Download discovered media")
+    crawl.add_argument(
+        "--download", action="store_true", help="Download discovered media"
+    )
     crawl.add_argument("--max-pages", type=int)
     crawl.add_argument("--max-depth", type=int)
     crawl.add_argument("--delay-seconds", type=float)

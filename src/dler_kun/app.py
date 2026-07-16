@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, is_dataclass
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
@@ -79,8 +80,14 @@ class DlerKunApp:
         base_options = {
             **(options or {}),
             "cache_manager": self.cache,
-            "user_agent": str((options or {}).get("user_agent") or self.config.get("user_agent", "") or ""),
-            "cookie": str((options or {}).get("cookie") or self.cookies.get_cookie() or ""),
+            "user_agent": str(
+                (options or {}).get("user_agent")
+                or self.config.get("user_agent", "")
+                or ""
+            ),
+            "cookie": str(
+                (options or {}).get("cookie") or self.cookies.get_cookie() or ""
+            ),
         }
         results: list[dict[str, Any]] = []
         self.progress.start_live()
@@ -88,7 +95,9 @@ class DlerKunApp:
             for url in urls:
                 detected = self.factory.detect(url)
                 if not detected:
-                    self.logs.warning("対応サービスではありません", engine_id=None, url=url)
+                    self.logs.warning(
+                        "対応サービスではありません", engine_id=None, url=url
+                    )
                     results.append(
                         {
                             "url": url,
@@ -116,12 +125,15 @@ class DlerKunApp:
                 self.queue.update(queue_job.id, status=JobStatus.RUNNING)
                 self.progress.update(
                     queue_job.id,
-                    progress=0,
+                    completed_files=0,
+                    total_files=1,
+                    current_file=_short_label(url),
                     state="running",
-                    label=url,
                 )
                 self.logs.info(
-                    "Download started", engine_id=detected.engine_id, job_id=queue_job.id
+                    "Download started",
+                    engine_id=detected.engine_id,
+                    job_id=queue_job.id,
                 )
                 try:
                     self._raise_if_cancelled(queue_job.id)
@@ -513,17 +525,26 @@ def _gofile_source_flags(
     return {"douga_enabled": True, "lab_enabled": True}
 
 
+def _short_label(url: str, max_len: int = 48) -> str:
+    text = str(url or "").strip()
+    if "gofile.io/d/" in text.lower():
+        return text.rstrip("/").rsplit("/", 1)[-1]
+    if len(text) <= max_len:
+        return text
+    return text[: max_len - 1] + "…"
+
+
 def to_jsonable(value: Any) -> Any:
-    if is_dataclass(value):
+    if is_dataclass(value) and not isinstance(value, type):
         return to_jsonable(asdict(value))
+    if isinstance(value, Enum):
+        return value.value
     if isinstance(value, dict):
         return {str(key): to_jsonable(item) for key, item in value.items()}
     if isinstance(value, list):
         return [to_jsonable(item) for item in value]
     if isinstance(value, tuple):
         return [to_jsonable(item) for item in value]
-    if hasattr(value, "value"):
-        return value.value
     if isinstance(value, Path):
         return str(value)
     return value

@@ -134,9 +134,7 @@ async def scrape_lab_page(
     try:
         import aiohttp
     except ImportError as exc:
-        raise ModuleNotFoundError(
-            "aiohttp is required for gofilelab scraping"
-        ) from exc
+        raise ModuleNotFoundError("aiohttp is required for gofilelab scraping") from exc
 
     ua = user_agent or _DEFAULT_USER_AGENT
     async with aiohttp.ClientSession(
@@ -173,9 +171,7 @@ async def scrape_lab_sources(
     try:
         import aiohttp
     except ImportError as exc:
-        raise ModuleNotFoundError(
-            "aiohttp is required for gofilelab scraping"
-        ) from exc
+        raise ModuleNotFoundError("aiohttp is required for gofilelab scraping") from exc
 
     ua = user_agent or _DEFAULT_USER_AGENT
     async with aiohttp.ClientSession(

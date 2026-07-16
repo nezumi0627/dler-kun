@@ -30,17 +30,28 @@ def print_download_results(
 
     for result in results:
         status = str(result.get("status", "")).lower()
-        url = result.get("url") or ""
-        message = result.get("message") or status
+        url = str(result.get("url") or "").strip()
+        message = str(result.get("message") or status).strip()
         files = result.get("files") or []
         errors = result.get("errors") or []
         tag = _status_tag(status)
-        print(f"{tag} {message}")
+        file_count = len(files) if isinstance(files, list) else 0
+
+        if status in {"success", "ok", "complete", "completed"}:
+            summary = (
+                f"Downloaded {file_count} file(s)."
+                if file_count
+                else (message or "Download completed.")
+            )
+            if message.startswith("Downloaded "):
+                summary = message
+            print(f"{tag} {summary}")
+        else:
+            print(f"{tag} {message}")
+
         if url:
-            print(f"  url: {url}")
-        if files:
-            print(f"  files: {len(files)}")
-        if errors:
+            print(f"  {url}")
+        if errors and status not in {"success", "ok", "complete", "completed"}:
             print(f"  errors: {', '.join(str(error) for error in errors)}")
     return _exit_code_from_statuses(item.get("status") for item in results)
 
@@ -105,7 +116,14 @@ def _status_tag(status: str) -> str:
 
 def _exit_code_from_status(status: Any) -> int:
     normalized = str(status or "").lower()
-    if normalized in {"success", "ok", "complete", "completed", "cancelled", "canceled"}:
+    if normalized in {
+        "success",
+        "ok",
+        "complete",
+        "completed",
+        "cancelled",
+        "canceled",
+    }:
         return 0
     return 1
 
