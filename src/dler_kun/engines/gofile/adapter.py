@@ -79,15 +79,82 @@ class GoFileEngine(IDownloader):
         from gofile_dl.downloader import GoFileDownloader
 
         timeout = aiohttp.ClientTimeout(total=None)
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            downloader = GoFileDownloader(session, proxy=self.proxy)
-            await downloader.init()
-            result = await downloader.download(
-                request.url,
-                password=request.options.get("password"),
-                output_dir=str(self._download_root(request)),
-            )
+        password = request.options.get("password")
+        output_dir = str(self._download_root(request))
 
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            result = await self._download_with_session(
+                session,
+                GoFileDownloader,
+                url=request.url,
+                password=password,
+                output_dir=output_dir,
+            )
+            # Stale guest tokens in tokens.json often return HTTP 401.
+            # Invalidate and retry once with a fresh guest account (wrapper-side).
+            if _is_unauthorized_result(result):
+                fresh_token = await self._refresh_guest_token(session)
+                if fresh_token:
+                    result = await self._download_with_session(
+                        session,
+                        GoFileDownloader,
+                        url=request.url,
+                        password=password,
+                        output_dir=output_dir,
+                        token=fresh_token,
+                    )
+
+        return self._download_result_from_payload(request, result)
+
+    async def _download_with_session(
+        self,
+        session: Any,
+        downloader_cls: Any,
+        *,
+        url: str,
+        password: Any,
+        output_dir: str,
+        token: str | None = None,
+    ) -> dict[str, Any]:
+        downloader = downloader_cls(session, token=token, proxy=self.proxy)
+        await downloader.init()
+        return await downloader.download(
+            url,
+            password=password,
+            output_dir=output_dir,
+        )
+
+    async def _refresh_guest_token(self, session: Any) -> str | None:
+        """Invalidate the cached guest token and mint a new one."""
+        try:
+            from gofile_dl.token.token_manager import TokenManager
+        except Exception:
+            return None
+
+        manager = TokenManager()
+        stale = await manager.get_valid_token()
+        if stale:
+            try:
+                await manager.invalidate_token(stale)
+            except Exception:
+                pass
+        try:
+            return await manager.create_new_token()
+        except Exception:
+            # Fall back to a one-shot guest account via the content API path.
+            try:
+                from gofile_dl.downloader.go_file_api import GoFileAPI
+
+                api = GoFileAPI(session, proxy=self.proxy)
+                return await api._create_guest_account()
+            except Exception:
+                return None
+
+    def _download_result_from_payload(
+        self,
+        request: DownloadRequest,
+        result: dict[str, Any],
+    ) -> DownloadResult:
         status = result.get("status")
         if status == "success":
             return DownloadResult(
@@ -99,12 +166,25 @@ class GoFileEngine(IDownloader):
                 errors=[str(error) for error in result.get("errors", [])],
                 metadata=result,
             )
+
+        message = result.get("message") or "GoFile download failed."
+        errors = [str(error) for error in result.get("errors", [])]
+        if not errors:
+            if status == "not_found":
+                errors = ["not_found"]
+            elif _is_unauthorized_result(result):
+                errors = ["auth_required"]
+            else:
+                errors = [str(status or "download_failed")]
+        elif _is_unauthorized_result(result) and "auth_required" not in errors:
+            errors = ["auth_required", *errors]
+
         return DownloadResult(
             job_id=request.job_id,
             engine_id=self.engine_id,
             status=JobStatus.FAILED,
-            message=result.get("message") or "GoFile download failed.",
-            errors=[str(error) for error in result.get("errors", [])] or [str(status)],
+            message=message,
+            errors=errors,
             metadata=result,
         )
 
@@ -308,6 +388,12 @@ class GoFileEngine(IDownloader):
         if output_dir.name.lower() in {self.engine_id, "rankings"}:
             return output_dir
         return output_dir / self.engine_id
+
+
+def _is_unauthorized_result(result: dict[str, Any]) -> bool:
+    message = str(result.get("message") or "")
+    lowered = message.lower()
+    return "unauthorized" in lowered or "アクセス権" in message
 
 
 async def collect_douga_urls(
