@@ -32,7 +32,15 @@ CARD_RE = re.compile(
 HREF_RE = re.compile(r'href="(?P<href>[^"]*/v/\d+/[^"]*)"')
 TITLE_RE = re.compile(r'title="(?P<title>[^"]*)"')
 THUMB_RE = re.compile(r'data-(?:original|webp)="(?P<thumb>https?://[^"]+)"')
-DATE_RE = re.compile(r"thumb-item-date.*?</i>\s*(?P<date>[^<]+)</div>", re.S)
+DATE_RE = re.compile(
+    r'class="[^"]*thumb-item-date[^"]*".*?(?:</i>)?\s*(?P<date>[^<]+)</div>',
+    re.S | re.I,
+)
+DATE_ALT_RES = (
+    re.compile(r"thumb-item-date.*?</i>\s*(?P<date>[^<]+)</div>", re.S | re.I),
+    re.compile(r'class="date"[^>]*>\s*(?P<date>[^<]+)\s*<', re.I),
+)
+VIDEO_PAGE_ID_RE = re.compile(r"/v/(?P<id>\d+)/")
 DURATION_RE = re.compile(
     r'<div class="time"><span[^>]*></span>\s*(?P<duration>[^<]+)</div>', re.S
 )
@@ -67,13 +75,14 @@ def crawl_fast(
     max_pages: int,
     timeout_seconds: float = 30.0,
     resolve_workers: int = 6,
+    include_undated: bool = False,
     now: datetime | None = None,
     fetcher: Callable[[str, float], str] | None = None,
 ) -> list[FastMediaItem]:
     fetcher = fetcher or fetch_html
     now = now or datetime.now(timezone.utc)
     candidates = discover_listing_items(
-        seeds, days, max_pages, timeout_seconds, now, fetcher
+        seeds, days, max_pages, timeout_seconds, now, fetcher, include_undated
     )
     return resolve_media_items(candidates, timeout_seconds, fetcher, resolve_workers)
 
@@ -139,9 +148,10 @@ def discover_listing_items(
     timeout_seconds: float,
     now: datetime,
     fetcher: Callable[[str, float], str],
+    include_undated: bool = False,
 ) -> list[FastListingItem]:
     results: list[FastListingItem] = []
-    seen_pages: set[str] = set()
+    seen_video_ids: set[str] = set()
     for seed in seeds:
         old_pages = 0
         for page_number in range(1, max(1, max_pages) + 1):
@@ -150,11 +160,15 @@ def discover_listing_items(
             html = fetcher(page_url, timeout_seconds)
             items = parse_listing_items(html, page_url, now)
             within = [
-                item for item in items if is_within_days(item.published_at, days, now)
+                item
+                for item in items
+                if is_within_days(item.published_at, days, now)
+                or (include_undated and item.published_at is None)
             ]
             for item in within:
-                if item.page_url not in seen_pages:
-                    seen_pages.add(item.page_url)
+                video_id = video_page_key(item.page_url)
+                if video_id not in seen_video_ids:
+                    seen_video_ids.add(video_id)
                     results.append(item)
             print(
                 f"[fast-scan] page {page_number}: +{len(within)} within {days} days "
@@ -179,7 +193,7 @@ def parse_listing_items(
         if not href:
             continue
         title = unescape(match_group(TITLE_RE, card, "title") or "")
-        date_text = unescape(match_group(DATE_RE, card, "date") or "")
+        date_text = extract_listing_date_text(card)
         items.append(
             FastListingItem(
                 page_url=urljoin(base_url, href),
@@ -228,6 +242,19 @@ def fetch_html(url: str, timeout_seconds: float) -> str:
     request = Request(url, headers={"User-Agent": USER_AGENT})
     with urlopen(request, timeout=timeout_seconds) as response:
         return response.read().decode("utf-8", "replace")
+
+
+def extract_listing_date_text(card: str) -> str:
+    for pattern in (DATE_RE, *DATE_ALT_RES):
+        match = pattern.search(card)
+        if match:
+            return unescape((match.group("date") or "").strip())
+    return ""
+
+
+def video_page_key(page_url: str) -> str:
+    match = VIDEO_PAGE_ID_RE.search(page_url)
+    return match.group("id") if match else page_url
 
 
 def listing_page_url(seed_url: str, page_number: int) -> str:
@@ -318,7 +345,8 @@ def download_existing_items_parallel(
     max_workers: int = 4,
     read_timeout_seconds: float = 30.0,
     attempts: int = 2,
-    cache_path: Path | None = None,
+    max_time_seconds: float | None = None,
+    cache_manager: DownloadCacheManager | None = None,
     progress_callback: Callable[[dict], None] | None = None,
 ) -> list[Path]:
     from xo_dler.downloader import target_path, unique_target_path, write_metadata
@@ -326,7 +354,7 @@ def download_existing_items_parallel(
     config.output_dir.mkdir(parents=True, exist_ok=True)
     max_workers = max(1, max_workers)
     curl_path = shutil.which("curl")
-    cache = DownloadCacheManager(cache_path) if cache_path else None
+    cache = cache_manager
     downloaded: list[Path] = []
     tasks = []
     start_time = time.monotonic()
@@ -376,11 +404,15 @@ def download_existing_items_parallel(
             downloaded.append(target)
             mark_completed(str(target))
             continue
-        if target.exists() or target.with_suffix(target.suffix + ".part").exists():
+        part_path = target.with_suffix(target.suffix + ".part")
+        if target.exists():
             target.unlink(missing_ok=True)
-            target.with_suffix(target.suffix + ".part").unlink(missing_ok=True)
             if cache:
                 cache.mark(cache_key, item.url, target, CacheStatus.CORRUPT, "85xo")
+        elif part_path.exists() and not should_keep_partial_after_failure(part_path, bool(curl_path)):
+            part_path.unlink(missing_ok=True)
+            if cache:
+                cache.mark(cache_key, item.url, part_path, CacheStatus.CORRUPT, "85xo")
         if target.exists():
             target = unique_target_path(target)
         tasks.append((item, target, cache_key))
@@ -398,6 +430,7 @@ def download_existing_items_parallel(
                 curl_path,
                 cache,
                 cache_key,
+                max_time_seconds,
             ): (item, target, cache_key)
             for item, target, cache_key in tasks
         }
@@ -441,6 +474,7 @@ def download_item_robust(
     curl_path: str | None,
     cache: DownloadCacheManager | None,
     cache_key: str,
+    max_time_seconds: float | None = None,
 ) -> bool:
     import requests
     from xo_dler.downloader import download_headers
@@ -457,7 +491,12 @@ def download_item_robust(
                 cache.mark(cache_key, item.url, part_path, CacheStatus.PARTIAL, "85xo")
             if use_curl:
                 download_with_curl(
-                    curl_path, item.url, part_path, headers, read_timeout_seconds
+                    curl_path,
+                    item.url,
+                    part_path,
+                    headers,
+                    read_timeout_seconds,
+                    max_time_seconds=max_time_seconds,
                 )
             else:
                 with requests.get(
@@ -510,15 +549,41 @@ def cache_key_for_url(url: str) -> str:
     return hashlib.sha256(url.encode("utf-8")).hexdigest()
 
 
-def download_with_curl(
+def direct_media_items_from_url(
+    url: str,
+    timeout_seconds: float = 30.0,
+    fetcher: Callable[[str, float], str] | None = None,
+) -> list[FastMediaItem]:
+    fetcher = fetcher or fetch_html
+    lowered = url.lower()
+    if "/get_file/" in lowered and ".mp4" in lowered:
+        return [FastMediaItem(url=url, source_page=url)]
+    video_html = fetcher(url, timeout_seconds)
+    media_url = select_best_media_url(video_html)
+    if not media_url:
+        return []
+    title = match_group(TITLE_RE, video_html, "title")
+    published_at = parse_video_published_at(video_html)
+    return [
+        FastMediaItem(
+            url=media_url,
+            source_page=url,
+            title=unescape(title) if title else None,
+            published_at=published_at,
+        )
+    ]
+
+
+def build_curl_download_command(
     curl_path: str,
     url: str,
     output_path: Path,
     headers: dict[str, str],
     read_timeout_seconds: float,
-) -> None:
+    max_time_seconds: float | None = None,
+) -> list[str]:
+    # Stall detection only by default; optional --max-time for hard caps.
     speed_time = max(10, int(read_timeout_seconds))
-    max_time = max(60, speed_time * 6)
     command = [
         curl_path,
         "--fail",
@@ -533,21 +598,43 @@ def download_with_curl(
         "1024",
         "--speed-time",
         str(speed_time),
-        "--max-time",
-        str(max_time),
         "--output",
         str(output_path),
     ]
+    if max_time_seconds is not None and max_time_seconds > 0:
+        command.extend(["--max-time", str(int(max_time_seconds))])
     for key, value in headers.items():
         command.extend(["--header", f"{key}: {value}"])
     command.append(url)
+    return command
+
+
+def download_with_curl(
+    curl_path: str,
+    url: str,
+    output_path: Path,
+    headers: dict[str, str],
+    read_timeout_seconds: float,
+    max_time_seconds: float | None = None,
+) -> None:
+    command = build_curl_download_command(
+        curl_path,
+        url,
+        output_path,
+        headers,
+        read_timeout_seconds,
+        max_time_seconds=max_time_seconds,
+    )
+    proc_timeout = None
+    if max_time_seconds is not None and max_time_seconds > 0:
+        proc_timeout = int(max_time_seconds) + 10
     completed = subprocess.run(
         command,
         capture_output=True,
         text=True,
         encoding="utf-8",
         errors="replace",
-        timeout=max_time + 10,
+        timeout=proc_timeout,
         check=False,
     )
     if completed.returncode != 0:

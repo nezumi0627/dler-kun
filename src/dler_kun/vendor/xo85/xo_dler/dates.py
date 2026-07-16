@@ -8,13 +8,19 @@ _RELATIVE_DAYS_PATTERNS = [
     re.compile(r"(?P<days>\d+)\s*日前"),
     re.compile(r"(?P<days>\d+)\s*天前"),
     re.compile(r"(?P<days>\d+)\s*days?\s+ago", re.IGNORECASE),
+    re.compile(r"(?P<days>\d+)\s*ngày trước", re.IGNORECASE),
+    re.compile(r"(?P<days>\d+)\s*ngay truoc", re.IGNORECASE),
 ]
 
 _RELATIVE_WEEKS_PATTERNS = [
     re.compile(r"(?P<weeks>\d+)\s*週間前"),
     re.compile(r"(?P<weeks>\d+)\s*星期前"),
     re.compile(r"(?P<weeks>\d+)\s*weeks?\s+ago", re.IGNORECASE),
+    re.compile(r"(?P<weeks>\d+)\s*tuần trước", re.IGNORECASE),
+    re.compile(r"(?P<weeks>\d+)\s*tuan truoc", re.IGNORECASE),
 ]
+
+_FULLWIDTH_DIGITS = str.maketrans("０１２３４５６７８９", "0123456789")
 
 _ABSOLUTE_PATTERNS = [
     "%Y-%m-%d",
@@ -23,19 +29,25 @@ _ABSOLUTE_PATTERNS = [
 ]
 
 
+def _normalize_date_text(text: str) -> str:
+    return " ".join(text.split()).translate(_FULLWIDTH_DIGITS)
+
+
 def parse_published_at(text: str, now: datetime | None = None) -> datetime | None:
     now = now or datetime.now(timezone.utc)
-    normalized = " ".join(text.split())
+    normalized = _normalize_date_text(text)
 
     if (
         "今日" in normalized
         or "今天" in normalized
+        or re.search(r"\b(hôm nay|hom nay)\b", normalized, re.IGNORECASE)
         or re.search(r"\btoday\b", normalized, re.IGNORECASE)
     ):
         return now
     if (
         "昨日" in normalized
         or "昨天" in normalized
+        or re.search(r"\b(hôm qua|hom qua)\b", normalized, re.IGNORECASE)
         or re.search(r"\byesterday\b", normalized, re.IGNORECASE)
     ):
         return now - timedelta(days=1)
