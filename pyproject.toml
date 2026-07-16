@@ -17,9 +17,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-gofile = [
-    "playwright>=1.40.0",
-]
 dev = [
     "pytest>=8.0.0",
 ]
@@ -33,6 +30,18 @@ build-backend = "hatchling.build"
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
+
+[tool.basedpyright]
+include = ["src", "tests"]
+extraPaths = ["src"]
+pythonVersion = "3.10"
+typeCheckingMode = "basic"
+
+[tool.pyright]
+include = ["src", "tests"]
+extraPaths = ["src"]
+pythonVersion = "3.10"
+typeCheckingMode = "basic"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/dler_kun"]
