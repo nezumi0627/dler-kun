@@ -93,7 +93,8 @@ class TwimgEngine(IDownloader):
             engine_id=self.engine_id,
             status=JobStatus.FAILED,
             message=f"twimg failed with exit code {completed.returncode}.",
-            errors=[output[-8000:] or "download_failed"],
+            errors=["download_failed"],
+            metadata={"stdout": output[-8000:]},
         )
 
     def crawl(self, request: CrawlRequest) -> CrawlResult:

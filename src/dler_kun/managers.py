@@ -3,14 +3,24 @@ from __future__ import annotations
 import json
 import os
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, TextIO
 from uuid import uuid4
 
+from .engines.gofile.seeds import DEFAULT_GOFILE_RANKING_SEEDS
+from .engines.xo85.seeds import DEFAULT_85XO_SEEDS
 from .models import CacheEntry, CacheStatus, JobStatus, LogEvent, LogLevel, QueueJob
+from .progress_ui import (
+    LivePanel,
+    ProgressSnapshot,
+    enable_windows_ansi,
+    is_interactive_tty,
+    snapshot_from_state,
+)
 
 
 def utc_now() -> str:
@@ -38,10 +48,15 @@ class ConfigManager:
                 "85xo": os.environ.get("DLER_85XO_PATH", ""),
             },
             "85xo": {
-                "default_seed": "https://www.85xo.com/latest-updates/",
+                "default_seeds": list(DEFAULT_85XO_SEEDS),
                 "days": 10,
                 "max_pages": 50,
                 "network_capture_seconds": 15.0,
+            },
+            "gofile": {
+                "ranking_seeds": list(DEFAULT_GOFILE_RANKING_SEEDS),
+                "ranking_limit": 60,
+                "max_more_clicks": 5,
             },
         }
         if not self.path.exists():
@@ -51,7 +66,8 @@ class ConfigManager:
                 user_config = json.load(file)
         except (OSError, json.JSONDecodeError):
             return default
-        return _deep_merge(default, user_config)
+        merged = _deep_merge(default, user_config)
+        return _normalize_gofile_config(_normalize_85xo_config(merged))
 
     def save(self) -> None:
         _atomic_write_json(self.path, self._config)
@@ -63,7 +79,9 @@ class ConfigManager:
         self._config[key] = value
 
     def update(self, values: dict[str, Any]) -> dict[str, Any]:
-        self._config = _deep_merge(self._config, values)
+        self._config = _normalize_gofile_config(
+            _normalize_85xo_config(_deep_merge(self._config, values))
+        )
         self.save()
         return self.as_dict()
 
@@ -210,16 +228,61 @@ class DownloadCacheManager:
 
 
 class ProgressManager:
-    def __init__(self) -> None:
+    """Job progress store with optional compact LivePanel rendering."""
+
+    def __init__(
+        self,
+        *,
+        live: bool | None = None,
+        stream: TextIO | None = None,
+    ) -> None:
         self._items: dict[str, dict[str, Any]] = {}
         self._lock = threading.Lock()
+        self._started_at: dict[str, float] = {}
+        self._stream = stream
+        self._live_enabled = (
+            is_interactive_tty(stream) if live is None else bool(live)
+        )
+        self._panel: LivePanel | None = None
+        if self._live_enabled:
+            enable_windows_ansi()
+            self._panel = LivePanel(stream=stream)
+
+    @property
+    def live_enabled(self) -> bool:
+        return self._live_enabled and self._panel is not None
+
+    def start_live(self) -> None:
+        if self._panel is not None:
+            self._panel.start()
+
+    def close_live(self) -> None:
+        if self._panel is not None:
+            self._panel.close()
 
     def update(self, job_id: str, **state: Any) -> None:
         with self._lock:
             current = self._items.get(job_id, {})
+            if job_id not in self._started_at:
+                self._started_at[job_id] = time.perf_counter()
             current.update(state)
             current["updated_at"] = utc_now()
             self._items[job_id] = current
+            snap = self._snapshot_locked(job_id, current)
+        if self._panel is not None and snap is not None:
+            self._panel.update(job_id, snap)
+
+    def finish(self, job_id: str, *, ok: bool = True, **state: Any) -> None:
+        with self._lock:
+            current = self._items.get(job_id, {})
+            if job_id not in self._started_at:
+                self._started_at[job_id] = time.perf_counter()
+            current.update(state)
+            current["updated_at"] = utc_now()
+            self._items[job_id] = current
+            snap = self._snapshot_locked(job_id, current, done=True, ok=ok)
+        if self._panel is not None and snap is not None:
+            self._panel.finish(job_id, snap, ok=ok)
 
     def get(self, job_id: str) -> dict[str, Any]:
         with self._lock:
@@ -228,6 +291,28 @@ class ProgressManager:
     def list(self) -> list[dict[str, Any]]:
         with self._lock:
             return [dict(value, id=key) for key, value in self._items.items()]
+
+    def _snapshot_locked(
+        self,
+        job_id: str,
+        state: dict[str, Any],
+        *,
+        done: bool = False,
+        ok: bool = True,
+    ) -> ProgressSnapshot | None:
+        started = self._started_at.get(job_id, time.perf_counter())
+        elapsed = max(0.0, time.perf_counter() - started)
+        status = str(state.get("state") or "").lower()
+        if status in {
+            JobStatus.SUCCESS.value,
+            JobStatus.FAILED.value,
+            JobStatus.CANCELLED.value,
+            JobStatus.SKIPPED.value,
+            JobStatus.UNSUPPORTED.value,
+        }:
+            done = True
+            ok = status == JobStatus.SUCCESS.value
+        return snapshot_from_state(state, elapsed=elapsed, done=done, ok=ok)
 
 
 class ThreadPool:
@@ -345,6 +430,59 @@ class QueueManager:
     def list(self) -> list[dict[str, Any]]:
         with self._lock:
             return [asdict(job) for job in self._jobs.values()]
+
+
+def _normalize_gofile_config(config: dict[str, Any]) -> dict[str, Any]:
+    gofile = config.get("gofile")
+    if not isinstance(gofile, dict):
+        return config
+
+    ranking_seeds = gofile.get("ranking_seeds")
+    if isinstance(ranking_seeds, str):
+        gofile["ranking_seeds"] = [ranking_seeds.strip()] if ranking_seeds.strip() else []
+    elif isinstance(ranking_seeds, (tuple, list)):
+        gofile["ranking_seeds"] = [
+            str(seed).strip() for seed in ranking_seeds if str(seed).strip()
+        ]
+    elif not ranking_seeds:
+        gofile["ranking_seeds"] = list(DEFAULT_GOFILE_RANKING_SEEDS)
+    if not gofile.get("ranking_seeds"):
+        gofile["ranking_seeds"] = list(DEFAULT_GOFILE_RANKING_SEEDS)
+
+    if "ranking_limit" not in gofile:
+        gofile["ranking_limit"] = 60
+    if "max_more_clicks" not in gofile:
+        gofile["max_more_clicks"] = 5
+
+    config["gofile"] = gofile
+    return config
+
+
+def _normalize_85xo_config(config: dict[str, Any]) -> dict[str, Any]:
+    xo85 = config.get("85xo")
+    if not isinstance(xo85, dict):
+        return config
+
+    legacy_seed = xo85.get("default_seed")
+    if legacy_seed:
+        xo85["default_seeds"] = [legacy_seed]
+    else:
+        default_seeds = xo85.get("default_seeds")
+        if isinstance(default_seeds, str):
+            xo85["default_seeds"] = [default_seeds]
+        elif isinstance(default_seeds, (tuple, list)):
+            xo85["default_seeds"] = [
+                str(seed).strip() for seed in default_seeds if str(seed).strip()
+            ]
+        elif not default_seeds:
+            xo85["default_seeds"] = list(DEFAULT_85XO_SEEDS)
+    if not xo85.get("default_seeds"):
+        xo85["default_seeds"] = list(DEFAULT_85XO_SEEDS)
+
+    xo85.pop("default_seed", None)
+
+    config["85xo"] = xo85
+    return config
 
 
 def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:

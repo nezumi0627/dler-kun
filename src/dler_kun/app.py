@@ -5,9 +5,11 @@ from pathlib import Path
 from typing import Any
 
 from .detector import ServiceDetector
-from .engines.twimg import TwimgEngine
 from .engines.gofile import GoFileEngine
+from .engines.twimg import TwimgEngine
 from .engines.xo85 import Xo85Engine
+from .engines.gofile.seeds import resolve_gofile_ranking_seeds
+from .engines.xo85.seeds import resolve_85xo_seeds
 from .factory import DownloaderFactory
 from .managers import (
     ConfigManager,
@@ -28,12 +30,17 @@ class JobCancelled(RuntimeError):
 
 
 class DlerKunApp:
-    def __init__(self, config_path: Path | None = None) -> None:
+    def __init__(
+        self,
+        config_path: Path | None = None,
+        *,
+        live_progress: bool | None = None,
+    ) -> None:
         self.config = ConfigManager(config_path)
         self.logs = LogManager()
         self.history = HistoryManager()
         self.cache = DownloadCacheManager()
-        self.progress = ProgressManager()
+        self.progress = ProgressManager(live=live_progress)
         self.queue = QueueManager()
         self.proxy = ProxyManager(self.config)
         self.cookies = CookieManager(self.config)
@@ -69,61 +76,85 @@ class DlerKunApp:
         options: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         output = Path(output_dir or self.config.get("output_dir", "downloads"))
-        options = options or {}
+        base_options = {
+            **(options or {}),
+            "cache_manager": self.cache,
+            "user_agent": str((options or {}).get("user_agent") or self.config.get("user_agent", "") or ""),
+            "cookie": str((options or {}).get("cookie") or self.cookies.get_cookie() or ""),
+        }
         results: list[dict[str, Any]] = []
-        for url in urls:
-            detected = self.factory.detect(url)
-            if not detected:
-                self.logs.warning("対応サービスではありません", engine_id=None, url=url)
-                results.append(
-                    {
-                        "url": url,
-                        "status": JobStatus.UNSUPPORTED.value,
-                        "message": "対応サービスではありません",
-                    }
-                )
-                continue
+        self.progress.start_live()
+        try:
+            for url in urls:
+                detected = self.factory.detect(url)
+                if not detected:
+                    self.logs.warning("対応サービスではありません", engine_id=None, url=url)
+                    results.append(
+                        {
+                            "url": url,
+                            "status": JobStatus.UNSUPPORTED.value,
+                            "message": "対応サービスではありません",
+                        }
+                    )
+                    continue
 
-            queue_job = self.queue.create(
-                "download", detected.engine_id, url, str(output)
-            )
-            request = DownloadRequest(
-                url=url,
-                output_dir=output,
-                job_id=queue_job.id,
-                engine_id=detected.engine_id,
-                options=options,
-            )
-            self.queue.update(queue_job.id, status=JobStatus.RUNNING)
-            self.progress.update(queue_job.id, progress=0, state="running")
-            self.logs.info(
-                "Download started", engine_id=detected.engine_id, job_id=queue_job.id
-            )
-            try:
-                self._raise_if_cancelled(queue_job.id)
-                result = detected.download(request)
-                self._raise_if_cancelled(queue_job.id)
-            except JobCancelled:
-                result_dict = self._cancel_result(
-                    queue_job.id,
-                    detected.engine_id,
-                    "Download cancelled",
-                    url=url,
+                queue_job = self.queue.create(
+                    "download", detected.engine_id, url, str(output)
                 )
+                request = DownloadRequest(
+                    url=url,
+                    output_dir=output,
+                    job_id=queue_job.id,
+                    engine_id=detected.engine_id,
+                    options={
+                        **base_options,
+                        "progress_callback": lambda state, job_id=queue_job.id: (
+                            self._update_job_progress(job_id, state)
+                        ),
+                    },
+                )
+                self.queue.update(queue_job.id, status=JobStatus.RUNNING)
+                self.progress.update(
+                    queue_job.id,
+                    progress=0,
+                    state="running",
+                    label=url,
+                )
+                self.logs.info(
+                    "Download started", engine_id=detected.engine_id, job_id=queue_job.id
+                )
+                try:
+                    self._raise_if_cancelled(queue_job.id)
+                    result = self._run_download_with_retry(detected, request)
+                    self._raise_if_cancelled(queue_job.id)
+                except JobCancelled:
+                    result_dict = self._cancel_result(
+                        queue_job.id,
+                        detected.engine_id,
+                        "Download cancelled",
+                        url=url,
+                    )
+                    results.append(result_dict)
+                    self.history.append({"kind": "download", **result_dict})
+                    continue
+                cancelled = self._finish_job(
+                    result.job_id,
+                    result.status,
+                    result.message,
+                    result.engine_id,
+                    result.errors,
+                )
+                if cancelled is not None:
+                    cancelled["url"] = url
+                    results.append(cancelled)
+                    self.history.append({"kind": "download", **cancelled})
+                    continue
+                result_dict = to_jsonable(result)
+                result_dict["url"] = url
                 results.append(result_dict)
                 self.history.append({"kind": "download", **result_dict})
-                continue
-            self._finish_job(
-                result.job_id,
-                result.status,
-                result.message,
-                result.engine_id,
-                result.errors,
-            )
-            result_dict = to_jsonable(result)
-            result_dict["url"] = url
-            results.append(result_dict)
-            self.history.append({"kind": "download", **result_dict})
+        finally:
+            self.progress.close_live()
         return results
 
     def crawl(
@@ -131,29 +162,56 @@ class DlerKunApp:
         service: str,
         output_dir: str | Path | None = None,
         seeds: list[str] | None = None,
-        days: int = 10,
+        days: int | None = None,
         download: bool = False,
         options: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         engine = self.factory.get(service)
         output = Path(output_dir or self.config.get("output_dir", "downloads"))
+        options = dict(options or {})
         if not engine:
             return {
                 "service": service,
                 "status": JobStatus.UNSUPPORTED.value,
                 "message": "対応サービスではありません",
             }
+        # GoFile crawl is ranking under another name; avoid creating an orphan crawl job.
+        if service == "gofile":
+            return self.ranking(
+                service=service,
+                output_dir=output,
+                seeds=seeds,
+                download=download,
+                options=options,
+            )
         queue_job = self.queue.create("crawl", engine.engine_id, service, str(output))
+        seeds_list = list(seeds or [])
+        resolved_days = days or 10
+        if service == "85xo":
+            xo85_config = self.config.get("85xo", {})
+            resolved_days = int(days or xo85_config.get("days", 10))
+            options.setdefault("max_pages", int(xo85_config.get("max_pages", 50)))
+            options.setdefault(
+                "network_capture_seconds",
+                float(xo85_config.get("network_capture_seconds", 15.0)),
+            )
+            options.setdefault("user_agent", self.config.get("user_agent", ""))
+            seeds_list = resolve_85xo_seeds(
+                seeds_list,
+                option_seed=options.get("seed"),
+                config_seeds=xo85_config.get("default_seeds"),
+                legacy_config_seed=xo85_config.get("default_seed"),
+            )
         request = CrawlRequest(
             service=service,
             output_dir=output,
             job_id=queue_job.id,
-            seeds=seeds or [],
-            days=days,
+            seeds=seeds_list,
+            days=resolved_days,
             download=download,
             options={
-                **(options or {}),
-                "cache_path": str(self.cache.path),
+                **options,
+                "cache_manager": self.cache,
                 "progress_callback": lambda state: self._update_job_progress(
                     queue_job.id,
                     state,
@@ -161,30 +219,134 @@ class DlerKunApp:
             },
         )
         self.queue.update(queue_job.id, status=JobStatus.RUNNING)
+        self.progress.update(queue_job.id, progress=0, state="running", label=service)
         self.logs.info("Crawl started", engine_id=engine.engine_id, job_id=queue_job.id)
+        self.progress.start_live()
         try:
-            self._raise_if_cancelled(queue_job.id)
-            result = engine.crawl(request)
-            self._raise_if_cancelled(queue_job.id)
-        except JobCancelled:
-            result_dict = self._cancel_result(
-                queue_job.id,
-                engine.engine_id,
-                "Crawl cancelled",
-                service=service,
+            try:
+                self._raise_if_cancelled(queue_job.id)
+                result = self._run_crawl_with_retry(engine, request)
+                self._raise_if_cancelled(queue_job.id)
+            except JobCancelled:
+                result_dict = self._cancel_result(
+                    queue_job.id,
+                    engine.engine_id,
+                    "Crawl cancelled",
+                    service=service,
+                )
+                self.history.append({"kind": "crawl", **result_dict})
+                return result_dict
+            cancelled = self._finish_job(
+                result.job_id,
+                result.status,
+                result.message,
+                result.engine_id,
+                result.errors,
             )
+            if cancelled is not None:
+                cancelled["service"] = service
+                self.history.append({"kind": "crawl", **cancelled})
+                return cancelled
+            result_dict = to_jsonable(result)
             self.history.append({"kind": "crawl", **result_dict})
             return result_dict
-        self._finish_job(
-            result.job_id,
-            result.status,
-            result.message,
-            result.engine_id,
-            result.errors,
+        finally:
+            self.progress.close_live()
+
+    def ranking(
+        self,
+        service: str,
+        output_dir: str | Path | None = None,
+        seeds: list[str] | None = None,
+        download: bool = False,
+        options: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        engine = self.factory.get(service)
+        output = Path(output_dir or self.config.get("output_dir", "downloads"))
+        options = dict(options or {})
+        if not engine:
+            return {
+                "service": service,
+                "status": JobStatus.UNSUPPORTED.value,
+                "message": "対応サービスではありません",
+            }
+
+        queue_job = self.queue.create("ranking", engine.engine_id, service, str(output))
+        seeds_list = list(seeds or [])
+
+        if service == "gofile":
+            gofile_config = self.config.get("gofile", {})
+            options.setdefault("limit", int(gofile_config.get("ranking_limit", 60)))
+            options.setdefault(
+                "max_more_clicks",
+                int(gofile_config.get("max_more_clicks", 5)),
+            )
+            options.setdefault("user_agent", self.config.get("user_agent", ""))
+            options.setdefault(
+                "config_seeds",
+                gofile_config.get("ranking_seeds"),
+            )
+            resolved = resolve_gofile_ranking_seeds(
+                seeds_list,
+                option_seed=options.get("seed"),
+                config_seeds=options.get("config_seeds"),
+                sources=options.get("sources"),
+            )
+            seeds_list = resolved
+            source_flags = _gofile_source_flags(resolved, options.get("sources"))
+            options.update(source_flags)
+
+        request = CrawlRequest(
+            service=service,
+            output_dir=output,
+            job_id=queue_job.id,
+            seeds=seeds_list,
+            download=download,
+            options={
+                **options,
+                "cache_manager": self.cache,
+                "progress_callback": lambda state: self._update_job_progress(
+                    queue_job.id,
+                    state,
+                ),
+            },
         )
-        result_dict = to_jsonable(result)
-        self.history.append({"kind": "crawl", **result_dict})
-        return result_dict
+        self.queue.update(queue_job.id, status=JobStatus.RUNNING)
+        self.progress.update(queue_job.id, progress=0, state="running", label=service)
+        self.logs.info(
+            "Ranking started", engine_id=engine.engine_id, job_id=queue_job.id
+        )
+        self.progress.start_live()
+        try:
+            try:
+                self._raise_if_cancelled(queue_job.id)
+                result = self._run_ranking_with_retry(engine, request)
+                self._raise_if_cancelled(queue_job.id)
+            except JobCancelled:
+                result_dict = self._cancel_result(
+                    queue_job.id,
+                    engine.engine_id,
+                    "Ranking cancelled",
+                    service=service,
+                )
+                self.history.append({"kind": "ranking", **result_dict})
+                return result_dict
+            cancelled = self._finish_job(
+                result.job_id,
+                result.status,
+                result.message,
+                result.engine_id,
+                result.errors,
+            )
+            if cancelled is not None:
+                cancelled["service"] = service
+                self.history.append({"kind": "ranking", **cancelled})
+                return cancelled
+            result_dict = to_jsonable(result)
+            self.history.append({"kind": "ranking", **result_dict})
+            return result_dict
+        finally:
+            self.progress.close_live()
 
     def _finish_job(
         self,
@@ -193,10 +355,9 @@ class DlerKunApp:
         message: str,
         engine_id: str,
         errors: list[str],
-    ) -> None:
+    ) -> dict[str, Any] | None:
         if self.queue.is_cancelled(job_id):
-            self._cancel_result(job_id, engine_id, message or "Job cancelled")
-            return
+            return self._cancel_result(job_id, engine_id, message or "Job cancelled")
         progress = 100 if status == JobStatus.SUCCESS else 0
         self.queue.update(
             job_id,
@@ -204,9 +365,15 @@ class DlerKunApp:
             progress=progress,
             error="; ".join(errors),
         )
-        self.progress.update(job_id, progress=progress, state=status.value)
+        self.progress.finish(
+            job_id,
+            ok=status == JobStatus.SUCCESS,
+            progress=progress,
+            state=status.value,
+        )
         log = self.logs.success if status == JobStatus.SUCCESS else self.logs.error
         log(message, engine_id=engine_id, job_id=job_id)
+        return None
 
     def _update_job_progress(self, job_id: str, state: dict[str, Any]) -> None:
         self._raise_if_cancelled(job_id)
@@ -231,7 +398,12 @@ class DlerKunApp:
         **extra: Any,
     ) -> dict[str, Any]:
         self.queue.cancel(job_id)
-        self.progress.update(job_id, progress=0, state=JobStatus.CANCELLED.value)
+        self.progress.finish(
+            job_id,
+            ok=False,
+            progress=0,
+            state=JobStatus.CANCELLED.value,
+        )
         self.logs.warning(message, engine_id=engine_id, job_id=job_id)
         return {
             "job_id": job_id,
@@ -242,6 +414,103 @@ class DlerKunApp:
             "errors": [],
             **extra,
         }
+
+    def _run_download_with_retry(
+        self,
+        engine: Any,
+        request: DownloadRequest,
+    ) -> Any:
+        result = engine.download(request)
+        retryable = {"download_failed", "network_error"}
+        for _ in range(max(0, self.retry.attempts)):
+            if result.status != JobStatus.FAILED:
+                break
+            if not retryable.intersection(result.errors):
+                break
+            result = engine.download(request)
+        return result
+
+    def _run_crawl_with_retry(
+        self,
+        engine: Any,
+        request: CrawlRequest,
+    ) -> Any:
+        result = engine.crawl(request)
+        retryable = {"crawl_failed", "network_error"}
+        for _ in range(max(0, self.retry.attempts)):
+            if result.status != JobStatus.FAILED:
+                break
+            if not retryable.intersection(result.errors):
+                break
+            result = engine.crawl(request)
+        return result
+
+    def _run_ranking_with_retry(
+        self,
+        engine: Any,
+        request: CrawlRequest,
+    ) -> Any:
+        result = engine.ranking(request)
+        retryable = {"crawl_failed", "network_error"}
+        for _ in range(max(0, self.retry.attempts)):
+            if result.status != JobStatus.FAILED:
+                break
+            if not retryable.intersection(result.errors):
+                break
+            result = engine.ranking(request)
+        return result
+
+    def cancel_job(self, job_id: str) -> dict[str, Any]:
+        job = self.queue.cancel(job_id)
+        if not job:
+            return {
+                "job_id": job_id,
+                "status": JobStatus.UNSUPPORTED.value,
+                "message": "job not found",
+            }
+        return self._cancel_result(job_id, job.engine_id, "Job cancelled")
+
+    def cancel_all(self) -> dict[str, Any]:
+        jobs = self.queue.cancel_all()
+        cancelled_ids = [job.id for job in jobs if self.queue.is_cancelled(job.id)]
+        for job_id in cancelled_ids:
+            self.progress.finish(
+                job_id,
+                ok=False,
+                progress=0,
+                state=JobStatus.CANCELLED.value,
+            )
+        self.logs.warning("All jobs cancelled", engine_id=None, job_id=None)
+        return {
+            "status": JobStatus.CANCELLED.value,
+            "message": "All jobs cancelled",
+            "job_ids": cancelled_ids,
+        }
+
+
+def _gofile_source_flags(
+    resolved_seeds: list[str],
+    sources: list[str] | None,
+) -> dict[str, bool]:
+    from .engines.gofile.seeds import classify_ranking_seed, expand_source_aliases
+
+    candidates: list[str] = []
+    if sources:
+        candidates = expand_source_aliases(
+            [str(source) for source in sources if str(source).strip()]
+        )
+    if not candidates and resolved_seeds:
+        candidates = list(resolved_seeds)
+    if not candidates:
+        return {"douga_enabled": True, "lab_enabled": True}
+
+    has_douga = any(classify_ranking_seed(seed) == "douga" for seed in candidates)
+    has_lab = any(classify_ranking_seed(seed) == "lab" for seed in candidates)
+    if has_douga and not has_lab:
+        return {"douga_enabled": True, "lab_enabled": False}
+    if has_lab and not has_douga:
+        return {"douga_enabled": False, "lab_enabled": True}
+    return {"douga_enabled": True, "lab_enabled": True}
 
 
 def to_jsonable(value: Any) -> Any:
