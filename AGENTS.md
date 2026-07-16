@@ -34,7 +34,7 @@ Each engine should expose these capabilities when supported:
 - `detect(url) -> bool`
 - `download(request) -> DownloadResult`
 - `crawl(request) -> CrawlResult`
-- `ranking(request) -> RankingResult`
+- `ranking(request) -> CrawlResult`（GoFile のみ。専用 RankingResult 型はない）
 - `get_metadata(url) -> Metadata`
 - `login(settings) -> LoginResult`
 
@@ -77,4 +77,5 @@ python -m dler_kun --help
 python -m dler_kun detect https://gofile.io/d/example
 ```
 
+CLI defaults to a short human summary. Use `--json` when a full payload is needed.
 When validating existing projects, prefer their public CLI/API and do not modify their code.
