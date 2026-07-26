@@ -187,7 +187,7 @@ CLI 人間向け出力では `[ERROR]` タグと message が表示されます�
 | 用途 | インストール |
 |------|-------------|
 | 開発・テスト | `pip install -e ".[dev]"` |
-| 85xo legacy crawl | vendored xo85 の Chrome / Selenium 依存 |
+| 85xo legacy crawl | vendored 85xo の Chrome / Selenium 依存 |
 | 85xo fast DL（推奨） | システム `curl`（あれば使用、なければ requests） |
 
 本体 `dependencies`（`pyproject.toml`）: `requests`, `cryptography`, `aiofiles`, `aiohttp`, `aiohttp-socks`, `rich`, `tqdm`

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib
 import json
 import os
 import threading
@@ -12,7 +13,6 @@ from typing import Any, Callable, TextIO
 from uuid import uuid4
 
 from .engines.gofile.seeds import DEFAULT_GOFILE_RANKING_SEEDS
-from .engines.xo85.seeds import DEFAULT_85XO_SEEDS
 from .models import CacheEntry, CacheStatus, JobStatus, LogEvent, LogLevel, QueueJob
 from .progress_ui import (
     LivePanel,
@@ -21,6 +21,10 @@ from .progress_ui import (
     is_interactive_tty,
     snapshot_from_state,
 )
+
+DEFAULT_85XO_SEEDS = importlib.import_module(
+    "dler_kun.engines.85xo.seeds"
+).DEFAULT_85XO_SEEDS
 
 
 def utc_now() -> str:
@@ -459,29 +463,29 @@ def _normalize_gofile_config(config: dict[str, Any]) -> dict[str, Any]:
 
 
 def _normalize_85xo_config(config: dict[str, Any]) -> dict[str, Any]:
-    xo85 = config.get("85xo")
-    if not isinstance(xo85, dict):
+    config_85xo = config.get("85xo")
+    if not isinstance(config_85xo, dict):
         return config
 
-    legacy_seed = xo85.get("default_seed")
+    legacy_seed = config_85xo.get("default_seed")
     if legacy_seed:
-        xo85["default_seeds"] = [legacy_seed]
+        config_85xo["default_seeds"] = [legacy_seed]
     else:
-        default_seeds = xo85.get("default_seeds")
+        default_seeds = config_85xo.get("default_seeds")
         if isinstance(default_seeds, str):
-            xo85["default_seeds"] = [default_seeds]
+            config_85xo["default_seeds"] = [default_seeds]
         elif isinstance(default_seeds, (tuple, list)):
-            xo85["default_seeds"] = [
+            config_85xo["default_seeds"] = [
                 str(seed).strip() for seed in default_seeds if str(seed).strip()
             ]
         elif not default_seeds:
-            xo85["default_seeds"] = list(DEFAULT_85XO_SEEDS)
-    if not xo85.get("default_seeds"):
-        xo85["default_seeds"] = list(DEFAULT_85XO_SEEDS)
+            config_85xo["default_seeds"] = list(DEFAULT_85XO_SEEDS)
+    if not config_85xo.get("default_seeds"):
+        config_85xo["default_seeds"] = list(DEFAULT_85XO_SEEDS)
 
-    xo85.pop("default_seed", None)
+    config_85xo.pop("default_seed", None)
 
-    config["85xo"] = xo85
+    config["85xo"] = config_85xo
     return config
 
 

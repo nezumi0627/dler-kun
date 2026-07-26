@@ -8,9 +8,8 @@ from typing import Any
 from .detector import ServiceDetector
 from .engines.gofile import GoFileEngine
 from .engines.twimg import TwimgEngine
-from .engines.xo85 import Xo85Engine
+from .engines.engine_85xo import Engine85xo, resolve_85xo_seeds
 from .engines.gofile.seeds import resolve_gofile_ranking_seeds
-from .engines.xo85.seeds import resolve_85xo_seeds
 from .factory import DownloaderFactory
 from .managers import (
     ConfigManager,
@@ -59,7 +58,7 @@ class DlerKunApp:
                 proxy=self.proxy.get_proxy(),
             )
         )
-        self.factory.register(Xo85Engine(engine_paths.get("85xo") or None))
+        self.factory.register(Engine85xo(engine_paths.get("85xo") or None))
 
     def detect(self, url: str) -> dict[str, Any]:
         engine_id = self.detector.detect(url)
@@ -200,19 +199,19 @@ class DlerKunApp:
         seeds_list = list(seeds or [])
         resolved_days = days or 10
         if service == "85xo":
-            xo85_config = self.config.get("85xo", {})
-            resolved_days = int(days or xo85_config.get("days", 10))
-            options.setdefault("max_pages", int(xo85_config.get("max_pages", 50)))
+            config_85xo = self.config.get("85xo", {})
+            resolved_days = int(days or config_85xo.get("days", 10))
+            options.setdefault("max_pages", int(config_85xo.get("max_pages", 50)))
             options.setdefault(
                 "network_capture_seconds",
-                float(xo85_config.get("network_capture_seconds", 15.0)),
+                float(config_85xo.get("network_capture_seconds", 15.0)),
             )
             options.setdefault("user_agent", self.config.get("user_agent", ""))
             seeds_list = resolve_85xo_seeds(
                 seeds_list,
                 option_seed=options.get("seed"),
-                config_seeds=xo85_config.get("default_seeds"),
-                legacy_config_seed=xo85_config.get("default_seed"),
+                config_seeds=config_85xo.get("default_seeds"),
+                legacy_config_seed=config_85xo.get("default_seed"),
             )
         request = CrawlRequest(
             service=service,
@@ -547,4 +546,9 @@ def to_jsonable(value: Any) -> Any:
         return [to_jsonable(item) for item in value]
     if isinstance(value, Path):
         return str(value)
+    if hasattr(value, "isoformat") and callable(value.isoformat):
+        try:
+            return value.isoformat()
+        except (TypeError, ValueError):
+            return str(value)
     return value

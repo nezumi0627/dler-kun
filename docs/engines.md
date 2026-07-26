@@ -94,7 +94,7 @@
 
 ## `85xo`
 
-**Vendored**: `src/dler_kun/vendor/xo85/`
+**Vendored**: `src/dler_kun/vendor/85xo/`
 
 ### 対応 URL
 
@@ -109,7 +109,7 @@
 
 ### crawl: `fast`（既定）
 
-`engines/xo85/fast.py`:
+`engines/85xo/fast.py`:
 
 1. シード一覧ページを HTTP で走査（`max_pages` まで）
 2. 一覧の日付テキストで `--days` 以内に絞り込み

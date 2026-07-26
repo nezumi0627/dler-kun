@@ -592,8 +592,6 @@ def build_curl_download_command(
         "--location",
         "--silent",
         "--show-error",
-        "--continue-at",
-        "-",
         "--connect-timeout",
         "10",
         "--speed-limit",
@@ -603,6 +601,10 @@ def build_curl_download_command(
         "--output",
         str(output_path),
     ]
+    # Resume only when a non-empty partial already exists. An empty `.part`
+    # plus `--continue-at -` can hang on some CDNs (Range: bytes=0-).
+    if output_path.exists() and output_path.stat().st_size > 0:
+        command[5:5] = ["--continue-at", "-"]
     if max_time_seconds is not None and max_time_seconds > 0:
         command.extend(["--max-time", str(int(max_time_seconds))])
     for key, value in headers.items():
@@ -632,7 +634,9 @@ def download_with_curl(
         proc_timeout = int(max_time_seconds) + 10
     completed = subprocess.run(
         command,
-        capture_output=True,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
         text=True,
         encoding="utf-8",
         errors="replace",

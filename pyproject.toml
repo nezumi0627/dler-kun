@@ -34,14 +34,14 @@ pythonpath = ["src"]
 [tool.basedpyright]
 include = ["src/dler_kun", "tests"]
 exclude = ["src/dler_kun/vendor", "**/__pycache__", ".venv"]
-extraPaths = ["src", "src/dler_kun/vendor/gofile", "src/dler_kun/vendor/xo85"]
+extraPaths = ["src", "src/dler_kun/vendor/gofile", "src/dler_kun/vendor/85xo"]
 pythonVersion = "3.10"
 typeCheckingMode = "basic"
 
 [tool.pyright]
 include = ["src/dler_kun", "tests"]
 exclude = ["src/dler_kun/vendor", "**/__pycache__", ".venv"]
-extraPaths = ["src", "src/dler_kun/vendor/gofile", "src/dler_kun/vendor/xo85"]
+extraPaths = ["src", "src/dler_kun/vendor/gofile", "src/dler_kun/vendor/85xo"]
 pythonVersion = "3.10"
 typeCheckingMode = "basic"
 

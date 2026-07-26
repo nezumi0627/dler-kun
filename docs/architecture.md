@@ -46,7 +46,7 @@ src/dler_kun/engines/
     douga.py      # gofile-douga JSON API
     lab.py        # gofilelab HTTP
     seeds.py      # ランキングシード解決
-  xo85/
+  85xo/
     adapter.py
     fast.py       # HTTP 高速クロール
     seeds.py

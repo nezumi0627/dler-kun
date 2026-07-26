@@ -18,7 +18,7 @@ from ...models import (
 )
 
 
-class Xo85Engine(IDownloader):
+class Engine85xo(IDownloader):
     engine_id = "85xo"
     display_name = "85xo Engine"
     capabilities = EngineCapability(download=True, crawl=True, ranking=False)
@@ -27,7 +27,7 @@ class Xo85Engine(IDownloader):
         self.project_path = (
             Path(project_path)
             if project_path
-            else Path(__file__).resolve().parents[2] / "vendor" / "xo85"
+            else Path(__file__).resolve().parents[2] / "vendor" / "85xo"
         )
         self.lib_path = self.project_path
 
@@ -134,6 +134,7 @@ class Xo85Engine(IDownloader):
             )
 
     def _crawl_fast(self, request: CrawlRequest) -> CrawlResult:
+        self._ensure_path()
         from xo_dler import DownloadConfig
 
         from .fast import (
@@ -220,16 +221,16 @@ class Xo85Engine(IDownloader):
         )
 
     def _download_direct(self, request: DownloadRequest) -> DownloadResult:
-        from xo_dler import DownloadConfig
-
-        from .fast import (
-            direct_media_items_from_url,
-            download_existing_items_parallel,
-            to_existing_media_items,
-        )
-
         try:
             self._ensure_path()
+            from xo_dler import DownloadConfig
+
+            from .fast import (
+                direct_media_items_from_url,
+                download_existing_items_parallel,
+                to_existing_media_items,
+            )
+
             user_agent = str(request.options.get("user_agent") or "")
             fast_items = direct_media_items_from_url(
                 request.url,
@@ -281,7 +282,19 @@ class Xo85Engine(IDownloader):
                 errors=errors,
                 metadata={
                     "direct": True,
-                    "items": [item.__dict__ for item in fast_items],
+                    "items": [
+                        {
+                            "url": item.url,
+                            "source_page": item.source_page,
+                            "title": item.title,
+                            "published_at": (
+                                item.published_at.isoformat()
+                                if item.published_at is not None
+                                else None
+                            ),
+                        }
+                        for item in fast_items
+                    ],
                 },
             )
         except ModuleNotFoundError as exc:
