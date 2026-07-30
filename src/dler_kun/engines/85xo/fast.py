@@ -361,6 +361,7 @@ def download_existing_items_parallel(
     progress_lock = threading.Lock()
     completed = 0
     total = len(items)
+    byte_progress: dict[Path, tuple[int, float | None]] = {}
 
     def emit_progress(current_file: str = "") -> None:
         if not progress_callback:
@@ -368,26 +369,42 @@ def download_existing_items_parallel(
         elapsed = max(0.001, time.monotonic() - start_time)
         with progress_lock:
             done = completed
+            snapshot = list(byte_progress.values())
         rate = done / elapsed
         remaining = max(0, total - done)
         eta_seconds = int(remaining / rate) if rate > 0 else 0
-        progress_callback(
-            {
-                "phase": "download",
-                "current_file": current_file,
-                "completed_files": done,
-                "total_files": total,
-                "progress": round((done / total) * 100, 2) if total else 100,
-                "speed": f"{rate:.2f} files/s",
-                "eta": f"{eta_seconds}s",
-            }
-        )
+        payload = {
+            "phase": "download",
+            "current_file": current_file,
+            "completed_files": done,
+            "total_files": total,
+            "progress": round((done / total) * 100, 2) if total else 100,
+            "speed": f"{rate:.2f} files/s",
+            "eta": f"{eta_seconds}s",
+        }
+        # Prefer byte-level progress (from in-flight downloads) so a single
+        # large file doesn't look stuck at 0% until it fully completes.
+        bytes_done = sum(done_bytes for done_bytes, _ in snapshot)
+        resolved_totals = [t for _, t in snapshot if t is not None]
+        if snapshot and len(resolved_totals) == len(snapshot) and sum(resolved_totals) > 0:
+            payload["bytes_done"] = bytes_done
+            payload["bytes_total"] = sum(resolved_totals)
+        progress_callback(payload)
 
     def mark_completed(current_file: str = "") -> None:
         nonlocal completed
         with progress_lock:
             completed += 1
+            if current_file:
+                byte_progress.pop(Path(current_file), None)
         emit_progress(current_file)
+
+    def update_byte_progress(
+        target: Path, done_bytes: int, total_bytes: float | None
+    ) -> None:
+        with progress_lock:
+            byte_progress[target] = (done_bytes, total_bytes)
+        emit_progress(str(target))
 
     for item in items:
         target = target_path(config.output_dir, item)
@@ -433,6 +450,11 @@ def download_existing_items_parallel(
                 cache,
                 cache_key,
                 max_time_seconds,
+                (lambda done_bytes, total_bytes, target=target: update_byte_progress(
+                    target, done_bytes, total_bytes
+                ))
+                if progress_callback
+                else None,
             ): (item, target, cache_key)
             for item, target, cache_key in tasks
         }
@@ -477,6 +499,7 @@ def download_item_robust(
     cache: DownloadCacheManager | None,
     cache_key: str,
     max_time_seconds: float | None = None,
+    on_progress: Callable[[int, float | None], None] | None = None,
 ) -> bool:
     import requests
     from xo_dler.downloader import download_headers
@@ -484,11 +507,21 @@ def download_item_robust(
     part_path = target.with_suffix(target.suffix + ".part")
     target.parent.mkdir(parents=True, exist_ok=True)
     use_curl = bool(curl_path)
+    headers = download_headers(item, config)
+    total_bytes = probe_content_length(item.url, headers) if on_progress else None
 
     last_error: Exception | None = None
     for attempt in range(1, max(1, attempts) + 1):
+        stop_poll = threading.Event()
+        poll_thread: threading.Thread | None = None
+        if on_progress:
+            poll_thread = threading.Thread(
+                target=poll_part_progress,
+                args=(part_path, total_bytes, on_progress, stop_poll),
+                daemon=True,
+            )
+            poll_thread.start()
         try:
-            headers = download_headers(item, config)
             if cache:
                 cache.mark(cache_key, item.url, part_path, CacheStatus.PARTIAL, "85xo")
             if use_curl:
@@ -517,6 +550,8 @@ def download_item_robust(
             if not part_path.exists() or part_path.stat().st_size <= 0:
                 raise OSError("empty download")
             part_path.replace(target)
+            if on_progress:
+                on_progress(int(total_bytes or part_path.stat().st_size), total_bytes)
             print(f"[done] {target}")
             return True
         except (OSError, requests.RequestException, subprocess.SubprocessError) as exc:
@@ -536,9 +571,41 @@ def download_item_robust(
                     )
             else:
                 part_path.unlink(missing_ok=True)
+        finally:
+            stop_poll.set()
+            if poll_thread:
+                poll_thread.join(timeout=1.0)
 
     print(f"[warn] download failed: {item.url} ({last_error})")
     return False
+
+
+def probe_content_length(url: str, headers: dict[str, str]) -> float | None:
+    import requests
+
+    try:
+        probe_headers = {k: v for k, v in headers.items() if k.lower() != "range"}
+        response = requests.head(
+            url, headers=probe_headers, timeout=8, allow_redirects=True
+        )
+        length = response.headers.get("Content-Length")
+        return float(length) if length else None
+    except (requests.RequestException, ValueError):
+        return None
+
+
+def poll_part_progress(
+    part_path: Path,
+    total_bytes: float | None,
+    on_progress: Callable[[int, float | None], None],
+    stop_event: threading.Event,
+) -> None:
+    while not stop_event.wait(0.5):
+        try:
+            done = part_path.stat().st_size
+        except OSError:
+            done = 0
+        on_progress(done, total_bytes)
 
 
 def should_keep_partial_after_failure(part_path: Path, use_curl: bool) -> bool:

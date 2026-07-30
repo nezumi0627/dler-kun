@@ -17,7 +17,7 @@ from .cli import (
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="dler-kun",
-        description="Unified downloader for twimg / gofile / 85xo",
+        description="Unified downloader for twimg / gofile / 85xo / mvfile",
     )
     parser.add_argument(
         "--json",
@@ -40,7 +40,7 @@ def build_parser() -> argparse.ArgumentParser:
     download.add_argument("--password")
 
     crawl = sub.add_parser("crawl", help="Crawl an engine and optionally download")
-    crawl.add_argument("service", choices=["85xo", "gofile"])
+    crawl.add_argument("service", choices=["85xo", "gofile", "mvfile"])
     crawl.add_argument(
         "--seed", action="append", default=[], help="Override crawl seed URL"
     )

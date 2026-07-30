@@ -50,6 +50,7 @@ class ConfigManager:
                 "twimg": os.environ.get("DLER_TWIMG_PATH", ""),
                 "gofile": os.environ.get("DLER_GOFILE_PATH", ""),
                 "85xo": os.environ.get("DLER_85XO_PATH", ""),
+                "mvfile": os.environ.get("DLER_MVFILE_PATH", ""),
             },
             "85xo": {
                 "default_seeds": list(DEFAULT_85XO_SEEDS),
@@ -61,6 +62,10 @@ class ConfigManager:
                 "ranking_seeds": list(DEFAULT_GOFILE_RANKING_SEEDS),
                 "ranking_limit": 60,
                 "max_more_clicks": 5,
+            },
+            "mvfile": {
+                "api_base": "https://rwzugqnp.fun800.click/app-api",
+                "timeout_seconds": 30.0,
             },
         }
         if not self.path.exists():

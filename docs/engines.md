@@ -9,6 +9,7 @@
 | `twimg` | ✓ | — | — | 基本のみ | — |
 | `gofile` | ✓ | ✓※ | ✓ | 基本のみ | — |
 | `85xo` | ✓ | ✓ | — | 基本のみ | — |
+| `mvfile` | ✓ | ✓ | — | 基本のみ | — |
 
 ※ GoFile の `crawl` は `ranking` と同一実装（`GoFileEngine.crawl()` → `ranking()`）。
 
@@ -156,6 +157,50 @@ https://www.85xo.com/vi/latest-updates/
 
 ---
 
+## `mvfile`
+
+**実装**: `src/dler_kun/engines/mvfile/`（公開 land-page API + HLS）
+
+### 対応 URL
+
+- `mvfile.com` / `cdn.mvfile.com` / `*.mvfile.com`
+- 共有ショートリンク `https://cdn.mvfile.com/<id>`
+
+### download
+
+1. `/flow/land-page/getInfo` で単体 / フォルダを判定
+2. フォルダなら `/flow/land-page/list_by_links_page` で子を列挙し各 `getInfo` でメディア URL を解決
+3. HLS（`playlist.m3u8`）を `curl`（DoH 解決 IP 付き）で取得し、`ffmpeg -c copy` で mp4 化
+
+依存: システム `curl` と `ffmpeg`
+
+### crawl
+
+- `--seed` に共有 URL を指定
+- フォルダなら一覧、単体なら 1 件を `CrawlItem` として返す
+- `--download` で続けて保存
+
+```powershell
+dler-kun detect https://cdn.mvfile.com/3EN1gA
+dler-kun download https://cdn.mvfile.com/3EN1gA -o downloads/mvfile
+dler-kun crawl mvfile --seed https://cdn.mvfile.com/cv9NBN --download -o downloads/mvfile
+```
+
+### 設定 (`config.mvfile`)
+
+| キー | 既定 | 説明 |
+|------|------|------|
+| `api_base` | `https://rwzugqnp.fun800.click/app-api` | land-page API 基点 |
+| `timeout_seconds` | `30` | API / セグメント取得タイムアウト |
+
+### 制限
+
+- ranking 非対応
+- パスワード保護ページは `auth_required`
+- 動画 CDN の DNS 汚染対策として DoH + `curl --resolve` を使用
+
+---
+
 ## 外部プロジェクト参照（開発用）
 
 ランタイムの既定は vendored コピー。以下はソース参照のみ:
@@ -165,5 +210,6 @@ https://www.85xo.com/vi/latest-updates/
 | twimg | twimg downloader ソース |
 | gofile | `E:\projects\gofile-downloader` |
 | 85xo | `E:\projects\85-xo` |
+| mvfile | （外部 vendor なし・API 直結） |
 
 `config.engine_paths` または `DLER_*_PATH` 環境変数で一時 override 可能。

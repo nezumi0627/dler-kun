@@ -50,6 +50,11 @@ src/dler_kun/engines/
     adapter.py
     fast.py       # HTTP 高速クロール
     seeds.py
+  mvfile/
+    adapter.py
+    api.py        # land-page API
+    hls.py        # HLS → mp4
+    dns.py        # DoH / CDN IP 解決
 ```
 
 各 adapter は `sys.path` への vendored パス追加、または subprocess（twimg）で既存コードを呼び出します。**vendor 内部の改変は行いません。**
@@ -61,6 +66,7 @@ src/dler_kun/engines/
 | `gofile.io` | `gofile` |
 | `85xo.com` | `85xo` |
 | `tweetfile.com`, `twimg-media.com`, `cdn1.twimg-media.com` | `twimg` |
+| `mvfile.com`, `cdn.mvfile.com` | `mvfile` |
 
 未対応 URL は `unsupported`（エラーコード `unsupported_service`）を返します。
 
@@ -69,7 +75,7 @@ src/dler_kun/engines/
 | kind | 入口 | 説明 |
 |------|------|------|
 | `download` | `download` コマンド | URL 単位の DL |
-| `crawl` | `crawl 85xo` | 85xo 一覧クロール |
+| `crawl` | `crawl 85xo` / `crawl mvfile` | 一覧クロール |
 | `ranking` | `ranking gofile` / `crawl gofile` | GoFile ランキング URL 収集 |
 
 GoFile の `crawl` は `app.crawl()` 内で `ranking()` に委譲されます（`days` は使用されません）。

@@ -33,6 +33,7 @@ class ServiceDetector:
                     "cdn1.twimg-media.com",
                 ),
             ),
+            DetectionRule("mvfile", ("mvfile.com",)),
         ]
 
     def detect(self, url: str) -> str | None:

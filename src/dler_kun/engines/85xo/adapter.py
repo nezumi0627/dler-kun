@@ -265,6 +265,7 @@ class Engine85xo(IDownloader):
                         request.options.get("download_max_time")
                     ),
                     cache_manager=request.options.get("cache_manager"),
+                    progress_callback=request.options.get("progress_callback"),
                 )
             ]
             status = (

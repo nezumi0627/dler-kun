@@ -18,7 +18,7 @@ dler-kun [--json] <command> [options]
 |----------|------|
 | `detect <url>` | URL がどのエンジンで処理できるか判定 |
 | `download <urls...>` | 1 件以上の URL をダウンロード |
-| `crawl <service>` | エンジンをクロール（`85xo` / `gofile`） |
+| `crawl <service>` | エンジンをクロール（`85xo` / `gofile` / `mvfile`） |
 | `ranking <service>` | ランキングクロール（`gofile` のみ） |
 | `cancel [job_id]` | 実行中ジョブをキャンセル |
 | `config` | 有効設定を JSON 表示 |

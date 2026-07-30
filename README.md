@@ -34,6 +34,7 @@ dler-kun download https://gofile.io/d/example -o downloads
 | **twimg** | tweetfile / twimg-media | ✓ | | |
 | **gofile** | gofile.io · gofile-douga · gofilelab | ✓ | ✓ | ✓ |
 | **85xo** | 85xo.com | ✓ | ✓ | |
+| **mvfile** | mvfile.com / cdn.mvfile.com | ✓ | ✓ | |
 
 ---
 
@@ -71,6 +72,9 @@ dler-kun detect https://gofile.io/d/example
 
 # URL ダウンロード
 dler-kun download https://tweetfile.com/example https://gofile.io/d/example
+
+# mvfile 共有リンク
+dler-kun download https://cdn.mvfile.com/3EN1gA -o downloads/mvfile
 
 # 85xo — 直近 10 日をクロールして DL
 dler-kun crawl 85xo --days 10 --download -o downloads/85xo

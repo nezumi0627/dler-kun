@@ -7,6 +7,7 @@ from typing import Any
 
 from .detector import ServiceDetector
 from .engines.gofile import GoFileEngine
+from .engines.mvfile import MvfileEngine
 from .engines.twimg import TwimgEngine
 from .engines.engine_85xo import Engine85xo, resolve_85xo_seeds
 from .engines.gofile.seeds import resolve_gofile_ranking_seeds
@@ -59,6 +60,7 @@ class DlerKunApp:
             )
         )
         self.factory.register(Engine85xo(engine_paths.get("85xo") or None))
+        self.factory.register(MvfileEngine(engine_paths.get("mvfile") or None))
 
     def detect(self, url: str) -> dict[str, Any]:
         engine_id = self.detector.detect(url)
@@ -116,6 +118,7 @@ class DlerKunApp:
                     engine_id=detected.engine_id,
                     options={
                         **base_options,
+                        **self._engine_download_options(detected.engine_id),
                         "progress_callback": lambda state, job_id=queue_job.id: (
                             self._update_job_progress(job_id, state)
                         ),
@@ -213,6 +216,15 @@ class DlerKunApp:
                 config_seeds=config_85xo.get("default_seeds"),
                 legacy_config_seed=config_85xo.get("default_seed"),
             )
+        if service == "mvfile":
+            mvfile_config = self.config.get("mvfile", {})
+            options.setdefault("api_base", mvfile_config.get("api_base"))
+            options.setdefault(
+                "timeout_seconds",
+                float(mvfile_config.get("timeout_seconds", 30.0)),
+            )
+            if not seeds_list and options.get("seed"):
+                seeds_list = [str(options["seed"])]
         request = CrawlRequest(
             service=service,
             output_dir=output,
@@ -385,6 +397,17 @@ class DlerKunApp:
         log = self.logs.success if status == JobStatus.SUCCESS else self.logs.error
         log(message, engine_id=engine_id, job_id=job_id)
         return None
+
+    def _engine_download_options(self, engine_id: str) -> dict[str, Any]:
+        if engine_id != "mvfile":
+            return {}
+        mvfile_config = self.config.get("mvfile", {})
+        options: dict[str, Any] = {}
+        if mvfile_config.get("api_base"):
+            options["api_base"] = mvfile_config.get("api_base")
+        if "timeout_seconds" in mvfile_config:
+            options["timeout_seconds"] = float(mvfile_config.get("timeout_seconds", 30.0))
+        return options
 
     def _update_job_progress(self, job_id: str, state: dict[str, Any]) -> None:
         self._raise_if_cancelled(job_id)

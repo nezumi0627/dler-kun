@@ -32,6 +32,7 @@ python -m dler_kun config          # マージ後の有効値を表示
 | `twimg` | `DLER_TWIMG_PATH` | twimg スクリプトディレクトリ |
 | `gofile` | `DLER_GOFILE_PATH` | gofile vendored ルート |
 | `85xo` | `DLER_85XO_PATH` | 85xo vendored ルート |
+| `mvfile` | `DLER_MVFILE_PATH` | 予約（現状未使用） |
 
 空文字 = vendored 既定パスを使用。
 
@@ -55,6 +56,13 @@ python -m dler_kun config          # マージ後の有効値を表示
 | `max_more_clicks` | int | `5` | 互換用（現在未使用） |
 
 `ranking_seeds` が空または未設定の場合、自動的に全既定シードが補完されます。
+
+### `mvfile`
+
+| キー | 型 | 既定 | 説明 |
+|------|-----|------|------|
+| `api_base` | string | `https://rwzugqnp.fun800.click/app-api` | land-page API 基点 |
+| `timeout_seconds` | float | `30.0` | API / セグメント取得タイムアウト |
 
 ### 設定例
 
