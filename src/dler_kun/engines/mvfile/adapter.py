@@ -40,6 +40,8 @@ class MvfileEngine(IDownloader):
         host = (urlparse(url if "://" in url else f"https://{url}").hostname or "").lower()
         if host == "mvfile.com" or host.endswith(".mvfile.com"):
             return True
+        if host == "file-photo.com" or host.endswith(".file-photo.com"):
+            return True
         return extract_short_link(url) is not None and "mvfile" in url.lower()
 
     def download(self, request: DownloadRequest) -> DownloadResult:
