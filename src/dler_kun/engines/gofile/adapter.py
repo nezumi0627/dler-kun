@@ -56,9 +56,35 @@ class GoFileEngine(IDownloader):
         self.proxy = proxy or None
 
     def detect(self, url: str) -> bool:
-        return "gofile.io" in url.lower()
+        lowered = url.lower()
+        return any(d in lowered for d in ("gofile.io", "gofile-douga.com", "gofilelab.com"))
 
     def download(self, request: DownloadRequest) -> DownloadResult:
+        # gofile-douga.com / gofilelab.com are listing pages (not a single file
+        # page), so download the whole listing via the crawl path.
+        lowered = request.url.lower()
+        if "gofile-douga.com" in lowered or "gofilelab.com" in lowered:
+            crawl_request = CrawlRequest(
+                service=self.engine_id,
+                output_dir=request.output_dir,
+                job_id=request.job_id,
+                seeds=[request.url],
+                download=True,
+                options=request.options,
+            )
+            result = self.ranking(crawl_request)
+            return DownloadResult(
+                job_id=request.job_id,
+                engine_id=self.engine_id,
+                status=result.status,
+                message=result.message,
+                files=result.files,
+                errors=result.errors,
+                metadata={
+                    "items": [item.__dict__ for item in result.items],
+                    **result.metadata,
+                },
+            )
         try:
             return asyncio.run(self._download_async(request))
         except ModuleNotFoundError as exc:

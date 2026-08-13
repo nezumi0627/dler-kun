@@ -18,6 +18,11 @@ Runtime code must use the vendored copies under `src/dler_kun/vendor/` by defaul
 
 Use Adapter, Facade, Wrapper, or subprocess boundaries inside `dler-kun`. If a change appears necessary in vendored engine logic, document the reason first and prefer a wrapper-side workaround.
 
+### Documented vendored deviations
+
+- `src/dler_kun/vendor/85xo/xo_dler/dates.py` — added relative month/year units (`ヶ月前` / `か月前` / `个月前` / `months ago` / `tháng trước`; `年前` / `years ago` / `năm trước`), approximated as 30 / 365 days.
+  **Why:** 85xo listing pages show dates like `1年前` / `11ヶ月前`; the parser returned `None`, so items silently dropped out of the `--days` freshness filter and wide windows (`--days 365`) found nothing. The 85xo fast adapter's `parse_published_at` delegates to this vendored parser when importable, so a wrapper-only fix could not take effect.
+
 ## Architecture Rules
 
 - CLI calls application services only.

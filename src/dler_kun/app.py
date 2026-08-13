@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import signal
+import threading
 from dataclasses import asdict, is_dataclass
 from enum import Enum
 from pathlib import Path
@@ -7,9 +9,12 @@ from typing import Any
 
 from .detector import ServiceDetector
 from .engines.gofile import GoFileEngine
+from .engines.gofilerun import GofileRunEngine
 from .engines.mvfile import MvfileEngine
 from .engines.twimg import TwimgEngine
+from .engines.videy import VideyEngine
 from .engines.engine_85xo import Engine85xo, resolve_85xo_seeds
+from .engines.mixixxx import MixixxxEngine
 from .engines.gofile.seeds import resolve_gofile_ranking_seeds
 from .factory import DownloaderFactory
 from .managers import (
@@ -21,6 +26,7 @@ from .managers import (
     ProgressManager,
     ProxyManager,
     QueueManager,
+    ResolveCacheManager,
     RetryManager,
 )
 from .models import CrawlRequest, DownloadRequest, JobStatus
@@ -41,6 +47,7 @@ class DlerKunApp:
         self.logs = LogManager()
         self.history = HistoryManager()
         self.cache = DownloadCacheManager()
+        self.resolve_cache = ResolveCacheManager()
         self.progress = ProgressManager(live=live_progress)
         self.queue = QueueManager()
         self.proxy = ProxyManager(self.config)
@@ -49,6 +56,20 @@ class DlerKunApp:
         self.detector = ServiceDetector()
         self.factory = DownloaderFactory(self.detector)
         self._register_engines()
+        self.stop_event = threading.Event()
+        self._install_sigint_handler()
+
+    def _install_sigint_handler(self) -> None:
+        """Ctrl+C sets stop_event first so in-flight transfers abort fast."""
+
+        def handler(signum: int, frame: Any) -> None:
+            self.stop_event.set()
+            raise KeyboardInterrupt
+
+        try:
+            signal.signal(signal.SIGINT, handler)
+        except (ValueError, OSError):
+            pass  # Only the main thread may install a signal handler.
 
     def _register_engines(self) -> None:
         engine_paths = self.config.get("engine_paths", {})
@@ -61,6 +82,12 @@ class DlerKunApp:
         )
         self.factory.register(Engine85xo(engine_paths.get("85xo") or None))
         self.factory.register(MvfileEngine(engine_paths.get("mvfile") or None))
+        self.factory.register(GofileRunEngine(engine_paths.get("gofilerun") or None))
+        self.factory.register(VideyEngine(engine_paths.get("videy") or None))
+        self.factory.register(MixixxxEngine(engine_paths.get("mixixxx") or None))
+
+    def sites(self) -> dict[str, list[str]]:
+        return self.detector.supported_domains()
 
     def detect(self, url: str) -> dict[str, Any]:
         engine_id = self.detector.detect(url)
@@ -81,6 +108,8 @@ class DlerKunApp:
         base_options = {
             **(options or {}),
             "cache_manager": self.cache,
+            "resolve_cache": self.resolve_cache,
+            "stop_event": self.stop_event,
             "user_agent": str(
                 (options or {}).get("user_agent")
                 or self.config.get("user_agent", "")
@@ -225,6 +254,15 @@ class DlerKunApp:
             )
             if not seeds_list and options.get("seed"):
                 seeds_list = [str(options["seed"])]
+        if service == "gofilerun":
+            gr_config = self.config.get("gofilerun", {})
+            options.setdefault("api_base", gr_config.get("api_base"))
+            options.setdefault(
+                "timeout_seconds",
+                float(gr_config.get("timeout_seconds", 30.0)),
+            )
+            if not seeds_list and options.get("seed"):
+                seeds_list = [str(options["seed"])]
         request = CrawlRequest(
             service=service,
             output_dir=output,
@@ -235,6 +273,8 @@ class DlerKunApp:
             options={
                 **options,
                 "cache_manager": self.cache,
+                "resolve_cache": self.resolve_cache,
+                "stop_event": self.stop_event,
                 "progress_callback": lambda state: self._update_job_progress(
                     queue_job.id,
                     state,
@@ -328,6 +368,8 @@ class DlerKunApp:
             options={
                 **options,
                 "cache_manager": self.cache,
+                "resolve_cache": self.resolve_cache,
+                "stop_event": self.stop_event,
                 "progress_callback": lambda state: self._update_job_progress(
                     queue_job.id,
                     state,
@@ -399,14 +441,14 @@ class DlerKunApp:
         return None
 
     def _engine_download_options(self, engine_id: str) -> dict[str, Any]:
-        if engine_id != "mvfile":
+        if engine_id not in {"mvfile", "gofilerun"}:
             return {}
-        mvfile_config = self.config.get("mvfile", {})
+        config = self.config.get(engine_id, {})
         options: dict[str, Any] = {}
-        if mvfile_config.get("api_base"):
-            options["api_base"] = mvfile_config.get("api_base")
-        if "timeout_seconds" in mvfile_config:
-            options["timeout_seconds"] = float(mvfile_config.get("timeout_seconds", 30.0))
+        if config.get("api_base"):
+            options["api_base"] = config.get("api_base")
+        if "timeout_seconds" in config:
+            options["timeout_seconds"] = float(config.get("timeout_seconds", 30.0))
         return options
 
     def _update_job_progress(self, job_id: str, state: dict[str, Any]) -> None:

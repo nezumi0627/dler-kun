@@ -12,13 +12,17 @@ dler-kun [--json] <command> [options]
 |----------|------|
 | `--json` | 人間向けサマリーの代わりに機械可読 JSON を stdout に出力 |
 
+実行中の `crawl` / `download` / `ranking` は **Ctrl+C** で安全に停止できます。進行中の転送は打ち切られ、curl の途中データ（`.part`）は再開用に残ります。終了コードは 130。
+
+85xo の fast クロールは動画 URL 解決の結果を `fast_capture_cache.json`（プロジェクト直下、TTL 30日）にキャッシュします。同じ動画ページを再解決しないため再クロールが高速化します。削除すれば再取得します。
+
 ## コマンド一覧
 
 | コマンド | 説明 |
 |----------|------|
 | `detect <url>` | URL がどのエンジンで処理できるか判定 |
 | `download <urls...>` | 1 件以上の URL をダウンロード |
-| `crawl <service>` | エンジンをクロール（`85xo` / `gofile` / `mvfile`） |
+| `crawl <service>` | エンジンをクロール（`85xo` / `gofile` / `mvfile` / `mixixxx`） |
 | `ranking <service>` | ランキングクロール（`gofile` のみ） |
 | `cancel [job_id]` | 実行中ジョブをキャンセル |
 | `config` | 有効設定を JSON 表示 |
@@ -49,11 +53,14 @@ python -m dler_kun download URL [URL ...] [-o OUTPUT_DIR] [options]
 |----------|------|
 | `-o`, `--output-dir` | 出力先（既定: `config.output_dir` → `downloads`） |
 | `--force` | 既存ファイルを上書き（twimg / 85xo 直接 DL） |
+| `--metadata` | `<file>.json` メタデータサイドカーを書き出す（既定: オフ） |
 | `--verbose` | twimg 詳細ログ |
 | `--parallel` | twimg 並列数 |
 | `--seg-workers` | twimg セグメントワーカー |
 | `--quality` | twimg 画質 |
 | `--password` | GoFile フォルダパスワード |
+| `--related` | mvfile: 単一動画ページをチャンネルの関連リストに展開して全件 DL |
+| `--segment-concurrency` | 4 | mixixxx: 同時 HLS セグメント取得数 |
 
 複数 URL は順次処理。各 URL は個別に detector → engine download されます。
 
@@ -88,7 +95,9 @@ python -m dler_kun crawl {85xo|gofile} [options]
 | `--browser-path` | — | legacy: Chrome パス |
 | `--include-undated` | off | 日付不明を含める |
 | `--overwrite` | off | 既存を上書き |
+| `--metadata` | off | `<file>.json` メタデータサイドカーを書き出す |
 | `--resolve-workers` | 6 | fast: URL 解決並列 |
+| `--discover-workers` | 6 | fast: 一覧ページ取得並列 |
 | `--parallel-downloads` | 4 | fast: DL 並列 |
 | `--download-read-timeout` | 30 | fast: 停滞打ち切り秒 |
 | `--download-attempts` | 2 | fast: DL リトライ |
@@ -105,12 +114,35 @@ python -m dler_kun crawl {85xo|gofile} [options]
 | `--max-more-clicks` | 5 | 互換用（現在未使用） |
 
 ```powershell
-# 85xo 高速クロール + DL
-python -m dler_kun crawl 85xo --days 10 --download --method fast -o downloads/85xo
+# 85xo 高速クロール + DL（最新15日分）
+python -m dler_kun crawl 85xo --days 15 --download --discover-workers 12 --resolve-workers 12 --parallel-downloads 8 -o downloads/85xo
 
 # GoFile（ranking と同等）
 python -m dler_kun crawl gofile --source douga --download
 ```
+
+### mixixxx（`crawl mixixxx`）
+
+LuluStream 埋め込みの署名付き HLS を **Chrome（ヘッドレス）経由で取得** し、ffmpeg で mp4 結合します。CDN が実ブラウザの TLS フィンガープリントを検証するため、ブラウザは必須です。
+
+2 段階の並列化で高速化できます:
+
+| オプション | 既定 | 説明 |
+|----------|------|------|
+| `--parallel-downloads` | 3 | 同時に動かすブラウザセッション数（動画単位の並列） |
+| `--segment-concurrency` | 4 | 1 セッション内の同時 HLS セグメント取得数（動画内の並列） |
+
+```powershell
+# 全ページ取得（例: 69ページ分、-o で出力先）
+python -m dler_kun crawl mixixxx --max-pages 69 --download --parallel-downloads 3 --segment-concurrency 8 -o mixi-xxx
+```
+
+- 要 Chrome/Edge + ffmpeg（PATH に存在すれば自動検出）
+- 一覧ページは `{seed}/page/N/` の形式を想定（既定シード: `https://mixi-xxx.cc/`）
+- 既存 mp4 はスキップ（再開・重複回避）
+- 実測: セグメント並列取得で 1 本あたり 166s → 110s（約 1.5 倍）
+
+`--discover-workers` は一覧ページ取得を並列化するため、`--days` が大きいクロールほど効果が出ます（`--method fast` のみ）。
 
 ---
 

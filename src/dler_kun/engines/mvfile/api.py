@@ -173,6 +173,7 @@ def resolve_download_targets(
     api_base: str = DEFAULT_API_BASE,
     timeout_seconds: float = 30.0,
     password: str | None = None,
+    related: bool = False,
 ) -> list[MvfileEntry]:
     short_link = extract_short_link(url)
     if not short_link:
@@ -185,13 +186,14 @@ def resolve_download_targets(
         timeout_seconds=timeout_seconds,
         password=password,
     )
-    if not root.is_folder:
-        if root.media_url:
-            return [root]
-        # Some listings omit media until getInfo; already fetched.
+    if root.is_folder:
+        listing = root.short_link
+    elif related and root.channel_link:
+        listing = root.channel_link
+    else:
         return [root]
     listed = list_entries(
-        root.short_link,
+        listing,
         domain=domain,
         api_base=api_base,
         timeout_seconds=timeout_seconds,
