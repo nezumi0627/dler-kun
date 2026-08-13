@@ -8,7 +8,7 @@
 
 <p align="left">
   <img alt="Python" src="https://img.shields.io/badge/Python-3.10%2B-blue?style=flat-square">
-  <img alt="License" src="https://img.shields.io/badge/License-Unlicense-blue?style=flat-square">
+  <img alt="License" src="https://img.shields.io/badge/License-MIT-blue?style=flat-square">
   <img alt="Platform" src="https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=flat-square">
 </p>
 
@@ -76,4 +76,4 @@ dler-kun ranking gofile --source douga --download
 
 ## ライセンス
 
-[Unlicense](LICENSE) — パブリックドメイン相当（yt-dlp と同様）。自由にコピー・変更・再配布できます。
+[MIT](LICENSE) — 自由にコピー・変更・再配布できます。再配布時は著作権表示（作者名）の保持が条件です。
