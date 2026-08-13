@@ -70,14 +70,11 @@ Use these levels in user-visible logs:
 
 Never log secrets, cookies, GoFile tokens, or raw authorization headers.
 
-## Tests & Quality
-
-For every detector, factory, manager, or adapter change, add or update tests under `tests/` (pytest).
+## Quality
 
 Minimum verification before commit:
 
 ```powershell
-python -m pytest
 python -m ruff check src/dler_kun
 python -m basedpyright
 python -m dler_kun --help
