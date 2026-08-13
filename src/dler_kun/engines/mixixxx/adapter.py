@@ -19,7 +19,6 @@ from .fast import (
     discover_video_pages,
     extract_embed_url,
     fetch_html,
-    is_video_page_url,
 )
 
 

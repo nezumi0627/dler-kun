@@ -5,11 +5,12 @@ import json
 import os
 import threading
 import time
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, TextIO
+from typing import Any, TextIO
 from uuid import uuid4
 
 from .engines.gofile.seeds import DEFAULT_GOFILE_RANKING_SEEDS

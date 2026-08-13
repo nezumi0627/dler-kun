@@ -4,9 +4,10 @@ import asyncio
 import io
 import re
 import sys
+from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 
 from ...engine import IDownloader
 from ...models import (
@@ -25,8 +26,8 @@ from .douga import (
 )
 from .lab import LabFetchError, parse_lab_seed, scrape_lab_sources
 from .seeds import (
-    DEFAULT_GOFILE_RANKING_SEEDS,
     _DOUGA_SEEDS,
+    DEFAULT_GOFILE_RANKING_SEEDS,
     classify_ranking_seed,
     resolve_gofile_ranking_seeds,
 )
@@ -107,7 +108,9 @@ class GoFileEngine(IDownloader):
     async def _download_async(self, request: DownloadRequest) -> DownloadResult:
         self._ensure_path()
         import aiohttp
-        from gofile_dl.downloader import GoFileDownloader  # type: ignore[import-not-found]
+        from gofile_dl.downloader import (
+            GoFileDownloader,  # type: ignore[import-not-found]
+        )
 
         timeout = aiohttp.ClientTimeout(total=None)
         password = request.options.get("password")
@@ -188,7 +191,9 @@ class GoFileEngine(IDownloader):
     async def _refresh_guest_token(self, session: Any) -> str | None:
         """Invalidate the cached guest token and mint a new one."""
         try:
-            from gofile_dl.token.token_manager import TokenManager  # type: ignore[import-not-found]
+            from gofile_dl.token.token_manager import (
+                TokenManager,  # type: ignore[import-not-found]
+            )
         except Exception:
             return None
 
@@ -204,7 +209,9 @@ class GoFileEngine(IDownloader):
         except Exception:
             # Fall back to a one-shot guest account via the content API path.
             try:
-                from gofile_dl.downloader.go_file_api import GoFileAPI  # type: ignore[import-not-found]
+                from gofile_dl.downloader.go_file_api import (
+                    GoFileAPI,  # type: ignore[import-not-found]
+                )
 
                 api = GoFileAPI(session, proxy=self.proxy)
                 return await api._create_guest_account()

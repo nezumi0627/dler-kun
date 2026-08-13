@@ -53,7 +53,7 @@ def resolve_ipv4(host: str, timeout_seconds: float = 5.0) -> tuple[str, ...]:
     except OSError:
         return ()
     for info in infos:
-        ip = info[4][0]
+        ip = str(info[4][0])
         if _is_ipv4(ip) and ip not in answers:
             answers.append(ip)
     return tuple(answers)

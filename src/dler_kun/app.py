@@ -8,21 +8,21 @@ from pathlib import Path
 from typing import Any
 
 from .detector import ServiceDetector
+from .engines.engine_85xo import Engine85xo, resolve_85xo_seeds
 from .engines.gofile import GoFileEngine
+from .engines.gofile.seeds import resolve_gofile_ranking_seeds
 from .engines.gofilerun import GofileRunEngine
+from .engines.mixixxx import MixixxxEngine
 from .engines.mvfile import MvfileEngine
 from .engines.twimg import TwimgEngine
 from .engines.videy import VideyEngine
-from .engines.engine_85xo import Engine85xo, resolve_85xo_seeds
-from .engines.mixixxx import MixixxxEngine
-from .engines.gofile.seeds import resolve_gofile_ranking_seeds
 from .factory import DownloaderFactory
 from .managers import (
     ConfigManager,
     CookieManager,
+    DownloadCacheManager,
     HistoryManager,
     LogManager,
-    DownloadCacheManager,
     ProgressManager,
     ProxyManager,
     QueueManager,
@@ -611,9 +611,10 @@ def to_jsonable(value: Any) -> Any:
         return [to_jsonable(item) for item in value]
     if isinstance(value, Path):
         return str(value)
-    if hasattr(value, "isoformat") and callable(value.isoformat):
+    isoformat = getattr(value, "isoformat", None)
+    if callable(isoformat):
         try:
-            return value.isoformat()
+            return isoformat()
         except (TypeError, ValueError):
             return str(value)
     return value

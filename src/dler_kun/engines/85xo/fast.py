@@ -6,18 +6,18 @@ import shutil
 import subprocess
 import threading
 import time
+from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from html import unescape
 from pathlib import Path
-from typing import Any, Callable, Iterable
+from typing import Any
 from urllib.parse import urljoin, urlparse
 from urllib.request import Request, urlopen
 
 from ...managers import DownloadCacheManager
 from ...models import CacheStatus
-
 
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
