@@ -35,7 +35,13 @@ class ServiceDetector:
             ),
             DetectionRule(
                 "mvfile",
-                ("mvfile.com", "file-photo.com", "tweetfile.com", "gofile.website"),
+                (
+                    "mvfile.com",
+                    "file-photo.com",
+                    "tweetfile.com",
+                    "gofile.website",
+                    "image-share.cc",
+                ),
             ),
             DetectionRule("videy", ("video.twimg.news", "videy.co")),
             DetectionRule("mixixxx", ("mixi-xxx.cc",)),
