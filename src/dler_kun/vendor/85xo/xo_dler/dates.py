@@ -20,6 +20,22 @@ _RELATIVE_WEEKS_PATTERNS = [
     re.compile(r"(?P<weeks>\d+)\s*tuan truoc", re.IGNORECASE),
 ]
 
+_RELATIVE_MONTHS_PATTERNS = [
+    re.compile(r"(?P<months>\d+)\s*ヶ月前"),
+    re.compile(r"(?P<months>\d+)\s*か月前"),
+    re.compile(r"(?P<months>\d+)\s*个月前"),
+    re.compile(r"(?P<months>\d+)\s*months?\s+ago", re.IGNORECASE),
+    re.compile(r"(?P<months>\d+)\s*tháng trước", re.IGNORECASE),
+    re.compile(r"(?P<months>\d+)\s*thang truoc", re.IGNORECASE),
+]
+
+_RELATIVE_YEARS_PATTERNS = [
+    re.compile(r"(?P<years>\d+)\s*年前"),
+    re.compile(r"(?P<years>\d+)\s*years?\s+ago", re.IGNORECASE),
+    re.compile(r"(?P<years>\d+)\s*năm trước", re.IGNORECASE),
+    re.compile(r"(?P<years>\d+)\s*nam truoc", re.IGNORECASE),
+]
+
 _FULLWIDTH_DIGITS = str.maketrans("０１２３４５６７８９", "0123456789")
 
 _ABSOLUTE_PATTERNS = [
@@ -61,6 +77,19 @@ def parse_published_at(text: str, now: datetime | None = None) -> datetime | Non
         match = pattern.search(normalized)
         if match:
             return now - timedelta(weeks=int(match.group("weeks")))
+
+    for pattern in _RELATIVE_MONTHS_PATTERNS:
+        match = pattern.search(normalized)
+        if match:
+            # A month is not a fixed span; 30 days is close enough for a
+            # freshness window. ponytail: calendar-accurate months if the
+            # boundary around --days 30 matters.
+            return now - timedelta(days=int(match.group("months")) * 30)
+
+    for pattern in _RELATIVE_YEARS_PATTERNS:
+        match = pattern.search(normalized)
+        if match:
+            return now - timedelta(days=int(match.group("years")) * 365)
 
     for absolute_format in _ABSOLUTE_PATTERNS:
         for token in normalized.split():

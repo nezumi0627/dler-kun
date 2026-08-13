@@ -96,7 +96,7 @@ def _lab_headers(user_agent: str) -> dict[str, str]:
 
 
 async def _fetch_html(
-    session: "aiohttp.ClientSession",
+    session: aiohttp.ClientSession,
     page_url: str,
     *,
     timeout: float = DEFAULT_REQUEST_TIMEOUT_SECONDS,

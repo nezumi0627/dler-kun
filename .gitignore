@@ -12,13 +12,27 @@ venv/
 config.json
 history.json
 download_cache.json
+fast_capture_cache.json
 downloads/
+mixi-xxx/
 logs/
 tmp/
 *.db
 *.db-*
 *.part
 *.tmp
+
+# Downloaded media (never commit downloaded content)
+*.mp4
+*.webm
+*.mkv
+*.m4v
+*.mov
+*.ts
+*.m3u8
+
+# Local logs
+*.log
 
 # Secrets / service state
 .env

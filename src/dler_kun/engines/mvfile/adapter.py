@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 from urllib.parse import urlparse
 
 from ...engine import IDownloader
@@ -38,7 +37,14 @@ class MvfileEngine(IDownloader):
 
     def detect(self, url: str) -> bool:
         host = (urlparse(url if "://" in url else f"https://{url}").hostname or "").lower()
-        if host == "mvfile.com" or host.endswith(".mvfile.com"):
+        supported = (
+            "mvfile.com",
+            "file-photo.com",
+            "tweetfile.com",
+            "gofile.website",
+            "image-share.cc",
+        )
+        if any(host == domain or host.endswith(f".{domain}") for domain in supported):
             return True
         return extract_short_link(url) is not None and "mvfile" in url.lower()
 
@@ -53,6 +59,7 @@ class MvfileEngine(IDownloader):
                 api_base=api_base,
                 timeout_seconds=timeout_seconds,
                 password=str(password) if password else None,
+                related=bool(request.options.get("related")),
             )
             if not targets:
                 return DownloadResult(

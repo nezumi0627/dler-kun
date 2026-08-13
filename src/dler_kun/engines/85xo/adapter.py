@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Any
 
 from ...engine import IDownloader
-from .seeds import resolve_85xo_seeds
 from ...models import (
     CrawlItem,
     CrawlRequest,
@@ -16,6 +15,7 @@ from ...models import (
     EngineCapability,
     JobStatus,
 )
+from .seeds import resolve_85xo_seeds
 
 
 class Engine85xo(IDownloader):
@@ -32,7 +32,8 @@ class Engine85xo(IDownloader):
         self.lib_path = self.project_path
 
     def detect(self, url: str) -> bool:
-        return "85xo.com" in url.lower()
+        lowered = url.lower()
+        return any(d in lowered for d in ("85xo.com", "85po.net", "85po.com"))
 
     def download(self, request: DownloadRequest) -> DownloadResult:
         if self._is_direct_media_url(request.url) or self._is_video_page_url(
@@ -73,6 +74,7 @@ class Engine85xo(IDownloader):
             seeds = resolve_85xo_seeds(
                 request.seeds,
                 option_seed=request.options.get("seed"),
+                sources=request.options.get("sources"),
             )
             crawl_config = CrawlConfig(
                 seeds=[str(seed) for seed in seeds],
@@ -144,9 +146,12 @@ class Engine85xo(IDownloader):
         )
 
         user_agent = str(request.options.get("user_agent") or "")
+        stop_event = request.options.get("stop_event")
+        resolve_cache = request.options.get("resolve_cache")
         seeds = resolve_85xo_seeds(
             request.seeds,
             option_seed=request.options.get("seed"),
+            sources=request.options.get("sources"),
         )
         fast_items = crawl_fast(
             seeds=[str(seed) for seed in seeds],
@@ -155,6 +160,9 @@ class Engine85xo(IDownloader):
             timeout_seconds=float(request.options.get("timeout_seconds", 30.0)),
             resolve_workers=int(request.options.get("resolve_workers", 6)),
             include_undated=bool(request.options.get("include_undated", False)),
+            discover_workers=int(request.options.get("discover_workers", 6)),
+            stop_event=stop_event,
+            resolve_cache=resolve_cache,
         )
         media_items = to_existing_media_items(fast_items, self.project_path)
         crawl_items = [self._to_crawl_item(item) for item in media_items]
@@ -183,6 +191,8 @@ class Engine85xo(IDownloader):
                     ),
                     cache_manager=request.options.get("cache_manager"),
                     progress_callback=request.options.get("progress_callback"),
+                    write_metadata_sidecar=bool(request.options.get("metadata", False)),
+                    stop_event=stop_event,
                 )
             ]
             if len(files) < len(media_items):
@@ -232,6 +242,7 @@ class Engine85xo(IDownloader):
             )
 
             user_agent = str(request.options.get("user_agent") or "")
+            stop_event = request.options.get("stop_event")
             fast_items = direct_media_items_from_url(
                 request.url,
                 timeout_seconds=float(request.options.get("timeout_seconds", 30.0)),
@@ -266,6 +277,8 @@ class Engine85xo(IDownloader):
                     ),
                     cache_manager=request.options.get("cache_manager"),
                     progress_callback=request.options.get("progress_callback"),
+                    write_metadata_sidecar=bool(request.options.get("metadata", False)),
+                    stop_event=stop_event,
                 )
             ]
             status = (

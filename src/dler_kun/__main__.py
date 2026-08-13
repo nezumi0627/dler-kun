@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
 from .app import DlerKunApp
@@ -11,13 +12,14 @@ from .cli import (
     print_detect,
     print_download_results,
     print_job_result,
+    print_sites,
 )
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="dler-kun",
-        description="Unified downloader for twimg / gofile / 85xo / mvfile",
+        description="Unified downloader for twimg / gofile / 85xo / mvfile / gofilerun",
     )
     parser.add_argument(
         "--json",
@@ -29,18 +31,35 @@ def build_parser() -> argparse.ArgumentParser:
     detect = sub.add_parser("detect", help="Detect which engine handles a URL")
     detect.add_argument("url")
 
+    sub.add_parser("sites", help="List supported sites / engines")
+
     download = sub.add_parser("download", help="Download one or more URLs")
     download.add_argument("urls", nargs="+")
     download.add_argument("-o", "--output-dir", type=Path)
     download.add_argument("--force", action="store_true")
+    download.add_argument(
+        "--metadata", action="store_true", help="Write <file>.json metadata sidecar (default: off)"
+    )
     download.add_argument("--verbose", action="store_true")
     download.add_argument("--parallel", type=int)
     download.add_argument("--seg-workers", type=int)
+    download.add_argument(
+        "--segment-concurrency",
+        type=int,
+        help="mixixxx: concurrent HLS segment fetches (default 4)",
+    )
     download.add_argument("--quality")
     download.add_argument("--password")
+    download.add_argument(
+        "--related",
+        action="store_true",
+        help="mvfile: also download related files from the channel list",
+    )
 
     crawl = sub.add_parser("crawl", help="Crawl an engine and optionally download")
-    crawl.add_argument("service", choices=["85xo", "gofile", "mvfile"])
+    crawl.add_argument(
+        "service", choices=["85xo", "gofile", "mvfile", "gofilerun", "mixixxx"]
+    )
     crawl.add_argument(
         "--seed", action="append", default=[], help="Override crawl seed URL"
     )
@@ -56,9 +75,22 @@ def build_parser() -> argparse.ArgumentParser:
     crawl.add_argument("--browser-path")
     crawl.add_argument("--include-undated", action="store_true")
     crawl.add_argument("--overwrite", action="store_true")
+    crawl.add_argument(
+        "--metadata", action="store_true", help="Write <file>.json metadata sidecar (default: off)"
+    )
     crawl.add_argument("--method", choices=["fast", "legacy"], default="fast")
     crawl.add_argument("--resolve-workers", type=int)
+    crawl.add_argument(
+        "--discover-workers",
+        type=int,
+        help="Concurrent listing-page fetches during discovery (85xo fast method)",
+    )
     crawl.add_argument("--parallel-downloads", type=int)
+    crawl.add_argument(
+        "--segment-concurrency",
+        type=int,
+        help="mixixxx: concurrent HLS segment fetches per browser session (default 4)",
+    )
     crawl.add_argument(
         "--download-read-timeout",
         type=float,
@@ -74,7 +106,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--source",
         action="append",
         default=[],
-        help="Ranking source alias (gofile: douga/lab)",
+        help="Source alias (gofile: douga/lab; 85xo: top-rated/most-popular/tags/home/members/...)",
     )
     crawl.add_argument("--limit", type=int)
     crawl.add_argument("--max-more-clicks", type=int)
@@ -113,13 +145,29 @@ def main(argv: list[str] | None = None) -> int:
     # JSON mode must keep stdout clean; disable live progress bars.
     app = DlerKunApp(live_progress=False if as_json else None)
 
+    try:
+        return _dispatch(app, args, as_json, parser)
+    except KeyboardInterrupt:
+        app.stop_event.set()
+        app.cancel_all()
+        app.progress.close_live()
+        print("[WARNING] Interrupted (Ctrl+C). Job(s) cancelled.", file=sys.stderr)
+        return 130
+
+
+def _dispatch(
+    app: DlerKunApp, args: argparse.Namespace, as_json: bool, parser: argparse.ArgumentParser
+) -> int:
     if args.command == "detect":
         return print_detect(app.detect(args.url), as_json=as_json)
+
+    if args.command == "sites":
+        return print_sites(app.sites(), as_json=as_json)
 
     if args.command == "download":
         options = _options_from_args(
             args,
-            {"force", "verbose", "parallel", "seg_workers", "quality", "password"},
+            {"force", "verbose", "parallel", "seg_workers", "segment_concurrency", "quality", "password", "metadata", "related"},
         )
         return print_download_results(
             app.download_urls(args.urls, args.output_dir, options),
@@ -137,9 +185,12 @@ def main(argv: list[str] | None = None) -> int:
                 "browser_path",
                 "include_undated",
                 "overwrite",
+                "metadata",
                 "method",
                 "resolve_workers",
+                "discover_workers",
                 "parallel_downloads",
+                "segment_concurrency",
                 "download_read_timeout",
                 "download_attempts",
                 "download_max_time",

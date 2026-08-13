@@ -4,9 +4,10 @@ import asyncio
 import io
 import re
 import sys
+from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 
 from ...engine import IDownloader
 from ...models import (
@@ -25,8 +26,8 @@ from .douga import (
 )
 from .lab import LabFetchError, parse_lab_seed, scrape_lab_sources
 from .seeds import (
-    DEFAULT_GOFILE_RANKING_SEEDS,
     _DOUGA_SEEDS,
+    DEFAULT_GOFILE_RANKING_SEEDS,
     classify_ranking_seed,
     resolve_gofile_ranking_seeds,
 )
@@ -56,9 +57,35 @@ class GoFileEngine(IDownloader):
         self.proxy = proxy or None
 
     def detect(self, url: str) -> bool:
-        return "gofile.io" in url.lower()
+        lowered = url.lower()
+        return any(d in lowered for d in ("gofile.io", "gofile-douga.com", "gofilelab.com"))
 
     def download(self, request: DownloadRequest) -> DownloadResult:
+        # gofile-douga.com / gofilelab.com are listing pages (not a single file
+        # page), so download the whole listing via the crawl path.
+        lowered = request.url.lower()
+        if "gofile-douga.com" in lowered or "gofilelab.com" in lowered:
+            crawl_request = CrawlRequest(
+                service=self.engine_id,
+                output_dir=request.output_dir,
+                job_id=request.job_id,
+                seeds=[request.url],
+                download=True,
+                options=request.options,
+            )
+            result = self.ranking(crawl_request)
+            return DownloadResult(
+                job_id=request.job_id,
+                engine_id=self.engine_id,
+                status=result.status,
+                message=result.message,
+                files=result.files,
+                errors=result.errors,
+                metadata={
+                    "items": [item.__dict__ for item in result.items],
+                    **result.metadata,
+                },
+            )
         try:
             return asyncio.run(self._download_async(request))
         except ModuleNotFoundError as exc:
@@ -81,7 +108,9 @@ class GoFileEngine(IDownloader):
     async def _download_async(self, request: DownloadRequest) -> DownloadResult:
         self._ensure_path()
         import aiohttp
-        from gofile_dl.downloader import GoFileDownloader  # type: ignore[import-not-found]
+        from gofile_dl.downloader import (
+            GoFileDownloader,  # type: ignore[import-not-found]
+        )
 
         timeout = aiohttp.ClientTimeout(total=None)
         password = request.options.get("password")
@@ -162,7 +191,9 @@ class GoFileEngine(IDownloader):
     async def _refresh_guest_token(self, session: Any) -> str | None:
         """Invalidate the cached guest token and mint a new one."""
         try:
-            from gofile_dl.token.token_manager import TokenManager  # type: ignore[import-not-found]
+            from gofile_dl.token.token_manager import (
+                TokenManager,  # type: ignore[import-not-found]
+            )
         except Exception:
             return None
 
@@ -178,7 +209,9 @@ class GoFileEngine(IDownloader):
         except Exception:
             # Fall back to a one-shot guest account via the content API path.
             try:
-                from gofile_dl.downloader.go_file_api import GoFileAPI  # type: ignore[import-not-found]
+                from gofile_dl.downloader.go_file_api import (
+                    GoFileAPI,  # type: ignore[import-not-found]
+                )
 
                 api = GoFileAPI(session, proxy=self.proxy)
                 return await api._create_guest_account()

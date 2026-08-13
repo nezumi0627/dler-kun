@@ -11,6 +11,16 @@ def print_json(value: Any) -> None:
     print(json.dumps(to_jsonable(value), ensure_ascii=False, indent=2))
 
 
+def print_sites(sites: dict[str, list[str]], *, as_json: bool = False) -> int:
+    if as_json:
+        print_json(sites)
+        return 0
+    print("対応済みサイト一覧:")
+    for engine_id, domains in sites.items():
+        print(f"  {engine_id:<10} {', '.join(domains)}")
+    return 0
+
+
 def print_detect(result: dict[str, Any], *, as_json: bool = False) -> int:
     if as_json:
         print_json(result)

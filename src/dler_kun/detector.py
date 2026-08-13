@@ -23,17 +23,28 @@ class ServiceDetector:
 
     def __init__(self, rules: list[DetectionRule] | None = None) -> None:
         self._rules = rules or [
-            DetectionRule("gofile", ("gofile.io",)),
-            DetectionRule("85xo", ("85xo.com",)),
+            DetectionRule("gofile", ("gofile.io", "gofile-douga.com", "gofilelab.com")),
+            DetectionRule("gofilerun", ("gofile.run",)),
+            DetectionRule("85xo", ("85xo.com", "85po.net", "85po.com")),
             DetectionRule(
                 "twimg",
                 (
-                    "tweetfile.com",
                     "twimg-media.com",
                     "cdn1.twimg-media.com",
                 ),
             ),
-            DetectionRule("mvfile", ("mvfile.com",)),
+            DetectionRule(
+                "mvfile",
+                (
+                    "mvfile.com",
+                    "file-photo.com",
+                    "tweetfile.com",
+                    "gofile.website",
+                    "image-share.cc",
+                ),
+            ),
+            DetectionRule("videy", ("video.twimg.news", "videy.co")),
+            DetectionRule("mixixxx", ("mixi-xxx.cc",)),
         ]
 
     def detect(self, url: str) -> str | None:

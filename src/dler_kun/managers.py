@@ -5,11 +5,12 @@ import json
 import os
 import threading
 import time
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, TextIO
+from typing import Any, TextIO
 from uuid import uuid4
 
 from .engines.gofile.seeds import DEFAULT_GOFILE_RANKING_SEEDS
@@ -234,6 +235,53 @@ class DownloadCacheManager:
     def list(self) -> list[dict[str, Any]]:
         with self._lock:
             return list(self._items.values())
+
+
+class ResolveCacheManager:
+    """Cache of fast-capture (video page -> media URL) lookups.
+
+    Speeds up repeat crawls: resolving a video page again is one HTTP round
+    trip per item. Media URLs are stable per video on 85xo, so a generous TTL
+    is safe; expired entries are treated as misses and re-resolved.
+    """
+
+    def __init__(
+        self,
+        path: Path | None = None,
+        ttl_seconds: float = 30 * 24 * 3600,
+    ) -> None:
+        self.path = path or Path("fast_capture_cache.json")
+        self._ttl = ttl_seconds
+        self._lock = threading.Lock()
+        self._items = self._load()
+
+    def _load(self) -> dict[str, dict[str, Any]]:
+        if not self.path.exists():
+            return {}
+        try:
+            payload = json.loads(self.path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return {}
+        return payload if isinstance(payload, dict) else {}
+
+    def get(self, key: str) -> str | None:
+        with self._lock:
+            item = self._items.get(key)
+        if not item:
+            return None
+        resolved_at = float(item.get("resolved_at") or 0)
+        if self._ttl and time.time() - resolved_at > self._ttl:
+            return None
+        return str(item.get("media_url") or "") or None
+
+    def set(self, key: str, media_url: str) -> None:
+        with self._lock:
+            self._items[key] = {"media_url": media_url, "resolved_at": time.time()}
+            _atomic_write_json(self.path, self._items)
+
+    def summary(self) -> dict[str, int]:
+        with self._lock:
+            return {"entries": len(self._items)}
 
 
 class ProgressManager:
