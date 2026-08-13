@@ -120,7 +120,7 @@ dler-kun config                              # 設定表示
 | **gofilerun** | gofile.run | ✓ | ✓ | |
 | **85xo** | 85xo.com · 85po.net · 85po.com | ✓ | ✓ | |
 | **twimg** | twimg-media | ✓ | | |
-| **mvfile** | mvfile.com · tweetfile.com · gofile.website | ✓ | ✓ | |
+| **mvfile** | mvfile.com · tweetfile.com · gofile.website · image-share.cc | ✓ | ✓ | |
 | **videy** | video.twimg.news · videy.co | ✓ | | |
 | **mixixxx** | mixi-xxx.cc | ✓ | ✓ | |
 
