@@ -37,7 +37,13 @@ class MvfileEngine(IDownloader):
 
     def detect(self, url: str) -> bool:
         host = (urlparse(url if "://" in url else f"https://{url}").hostname or "").lower()
-        supported = ("mvfile.com", "file-photo.com", "tweetfile.com", "gofile.website")
+        supported = (
+            "mvfile.com",
+            "file-photo.com",
+            "tweetfile.com",
+            "gofile.website",
+            "image-share.cc",
+        )
         if any(host == domain or host.endswith(f".{domain}") for domain in supported):
             return True
         return extract_short_link(url) is not None and "mvfile" in url.lower()
