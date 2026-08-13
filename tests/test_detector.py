@@ -7,6 +7,9 @@ def test_detect_known_sites() -> None:
     assert detector.detect("https://85xo.com/v/1/x/") == "85xo"
     assert detector.detect("https://mixi-xxx.cc/scvp-20849/") == "mixixxx"
     assert detector.detect("https://mvfile.com/x") == "mvfile"
+    assert detector.detect("https://cdn.tweetfile.com/oNWQL8") == "mvfile"
+    assert detector.detect("https://gofile.website/Kf7Ulr") == "mvfile"
+    assert detector.detect("https://cdn2.image-share.cc/0u7C9g") == "mvfile"
     assert detector.detect("https://gofile.run/x") == "gofilerun"
     assert detector.detect("https://videy.co/x") == "videy"
 
