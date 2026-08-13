@@ -1,0 +1,28 @@
+# Notice
+
+## Vendored engines
+
+`src/dler_kun/vendor/` contains downloader engine code migrated from the
+project author's own earlier tools, and is licensed under the same
+[LICENSE](LICENSE) (MIT):
+
+- `vendor/85xo/` (`xo_dler`) — 85xo crawler/downloader
+- `vendor/gofile/` (`gofile_dl`, `ranking_dl`) — GoFile downloader / ranking collector
+- `vendor/twimg/` (`download_twitter_media.py`) — twitter/tweetfile media downloader
+
+No third-party code is embedded; these are the author's own implementations.
+
+## External tools
+
+dler-kun invokes the following as separate executables (never bundled or
+linked):
+
+- **ffmpeg** (LGPL/GPL) — used to mux HLS segments into MP4 (`mixixxx` engine).
+  Install from your OS package manager or https://ffmpeg.org.
+- **Google Chrome / Microsoft Edge** — used headlessly to fetch
+  TLS-fingerprint-bound HLS (`mixixxx` engine). Your own browser install.
+
+## Dependencies
+
+Runtime dependencies (`requests`, `cryptography`, `aiohttp`, `aiohttp-socks`,
+`rich`) retain their respective licenses (MIT / Apache-2.0).

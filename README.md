@@ -76,4 +76,4 @@ dler-kun ranking gofile --source douga --download
 
 ## ライセンス
 
-[MIT](LICENSE) — 自由にコピー・変更・再配布できます。再配布時は著作権表示（作者名）の保持が条件です。
+[MIT](LICENSE) — 自由にコピー・変更・再配布できます。再配布時は著作権表示（作者名）の保持が条件です。vendored エンジン・外部ツール（ffmpeg / Chrome）の扱いは [NOTICE](NOTICE) を参照。
