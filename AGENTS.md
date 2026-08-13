@@ -70,17 +70,22 @@ Use these levels in user-visible logs:
 
 Never log secrets, cookies, GoFile tokens, or raw authorization headers.
 
-## Tests
+## Tests & Quality
 
-For every detector, factory, manager, or adapter change, add or update tests under `tests/`.
+For every detector, factory, manager, or adapter change, add or update tests under `tests/` (pytest).
 
 Minimum verification before commit:
 
 ```powershell
-python -m unittest discover tests
+python -m pytest
+python -m ruff check src/dler_kun
+python -m basedpyright
 python -m dler_kun --help
-python -m dler_kun detect https://gofile.io/d/example
 ```
+
+Style is enforced by ruff (`pyproject.toml`); type checking by basedpyright.
+Keep modules import-light: heavy third-party imports stay inside functions
+(e.g. `requests`, browser/CDP helpers) so `import dler_kun` stays fast.
 
 CLI defaults to a short human summary. Use `--json` when a full payload is needed.
 When validating existing projects, prefer their public CLI/API and do not modify their code.

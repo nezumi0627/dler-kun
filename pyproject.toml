@@ -9,16 +9,15 @@ authors = [{ name = "nezumi0627" }]
 dependencies = [
     "requests>=2.31.0",
     "cryptography>=42.0.0",
-    "aiofiles>=25.1.0",
     "aiohttp>=3.14.0",
     "aiohttp-socks>=0.10.0",
     "rich>=13.0.0",
-    "tqdm>=4.67.3",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0.0",
+    "ruff>=0.9.0",
 ]
 
 [project.scripts]
@@ -30,6 +29,16 @@ build-backend = "hatchling.build"
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+exclude = ["src/dler_kun/vendor", "docs", ".github"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+# Adapter boundaries deliberately normalize arbitrary engine exceptions.
+ignore = ["BLE001", "E501"]
 
 [tool.basedpyright]
 include = ["src/dler_kun", "tests"]

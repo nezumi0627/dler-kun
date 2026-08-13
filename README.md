@@ -15,9 +15,11 @@ dler-kun ranking gofile --source douga --download
 
 <p align="left">
   <img alt="Python" src="https://img.shields.io/badge/Python-3.10%2B-blue?style=flat-square">
-  <img alt="License" src="https://img.shields.io/badge/License-MIT-green?style=flat-square">
+  <img alt="License" src="https://img.shields.io/badge/License-Unlicense-blue?style=flat-square">
   <img alt="Platform" src="https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=flat-square">
 </p>
+
+> **免責事項** — このツールは**実験・教育目的**のものです。著作権や利用条件に違反するコンテンツの取得には使わないでください。対象サイトとは一切無関係です。**DRM の回避や認証の突破は行いません**。利用者は各自の国の法律・対象サイトの利用規約を遵守する責任があります。詳細は [LEGAL.md](LEGAL.md) を参照。
 
 ---
 
@@ -151,14 +153,17 @@ dler-kun config                              # 設定表示
 | [architecture.md](docs/architecture.md) | 内部構成 |
 | [engines.md](docs/engines.md) | サイトごとの能力 |
 
-テスト:
+テスト・品質チェック:
 
 ```bash
-python -m unittest discover tests
+pip install -e ".[dev]"
+python -m pytest                # テスト
+python -m ruff check src/dler_kun   # リント
+python -m basedpyright          # 型チェック
 ```
 
 ---
 
 ## ライセンス
 
-MIT
+[Unlicense](LICENSE) — パブリックドメイン相当（yt-dlp と同様）。自由にコピー・変更・再配布できます。vendored エンジン（`src/dler_kun/vendor/`）はプロジェクト由来のコードで、このライセンスの対象です。

@@ -3,7 +3,6 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 from urllib.parse import urlparse
 
 from ...engine import IDownloader
@@ -99,6 +98,9 @@ class GofileRunEngine(IDownloader):
                             "state": "downloading",
                         }
                     )
+                if not target.media_url:
+                    errors.append("not_found")
+                    continue
                 try:
                     path = download_hls_to_mp4(
                         target.media_url,
@@ -188,7 +190,7 @@ class GofileRunEngine(IDownloader):
             api_base = str(request.options.get("api_base") or fun800_api.DEFAULT_API_BASE)
             timeout_seconds = float(request.options.get("timeout_seconds", 30.0))
             password = request.options.get("password")
-            media_entries: list[fun800_api.MvfileEntry] = []
+            media_entries: list[MediaTarget] = []
             for seed in seeds:
                 media_entries.extend(
                     collect_media(
@@ -219,6 +221,9 @@ class GofileRunEngine(IDownloader):
                                 "state": "downloading",
                             }
                         )
+                    if not target.media_url:
+                        errors.append("not_found")
+                        continue
                     try:
                         path = download_hls_to_mp4(
                             target.media_url,

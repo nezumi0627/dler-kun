@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Any
 
 from ...engine import IDownloader
-from .seeds import resolve_85xo_seeds
 from ...models import (
     CrawlItem,
     CrawlRequest,
@@ -16,6 +15,7 @@ from ...models import (
     EngineCapability,
     JobStatus,
 )
+from .seeds import resolve_85xo_seeds
 
 
 class Engine85xo(IDownloader):

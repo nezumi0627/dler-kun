@@ -16,8 +16,8 @@ import subprocess
 import sys
 import tempfile
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 from urllib.parse import unquote, urljoin, urlparse
 from urllib.request import Request, urlopen
 

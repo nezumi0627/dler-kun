@@ -146,7 +146,7 @@ def main(argv: list[str] | None = None) -> int:
     app = DlerKunApp(live_progress=False if as_json else None)
 
     try:
-        return _dispatch(app, args, as_json)
+        return _dispatch(app, args, as_json, parser)
     except KeyboardInterrupt:
         app.stop_event.set()
         app.cancel_all()
@@ -155,7 +155,9 @@ def main(argv: list[str] | None = None) -> int:
         return 130
 
 
-def _dispatch(app: DlerKunApp, args: argparse.Namespace, as_json: bool) -> int:
+def _dispatch(
+    app: DlerKunApp, args: argparse.Namespace, as_json: bool, parser: argparse.ArgumentParser
+) -> int:
     if args.command == "detect":
         return print_detect(app.detect(args.url), as_json=as_json)
 
