@@ -7,6 +7,7 @@ from urllib.parse import urlparse
 
 from ...engine import IDownloader
 from ...models import (
+    CacheStatus,
     CrawlItem,
     CrawlRequest,
     CrawlResult,
@@ -21,6 +22,7 @@ from ...models import (
 # live under engines/mvfile; this engine reuses them and adds gofile.run
 # detection plus recursive channel listing.
 from ..mvfile import api as fun800_api
+from ..mvfile.adapter import _is_failed
 from ..mvfile.hls import (
     MvfileDownloadError,
     download_hls_to_mp4,
@@ -83,13 +85,19 @@ class GofileRunEngine(IDownloader):
             output_dir.mkdir(parents=True, exist_ok=True)
             files: list[str] = []
             errors: list[str] = []
+            cache = request.options.get("cache_manager")
+            skipped_failed = 0
             progress = request.options.get("progress_callback")
             total = len(targets)
             for index, target in enumerate(targets, start=1):
+                cache_key = f"gofilerun:{target.entry.short_link}"
+                if cache and not force and _is_failed(cache, cache_key):
+                    skipped_failed += 1
+                    continue
                 if callable(progress):
                     progress(
                         {
-                            "completed_files": index - 1,
+                            "completed_files": index - 1 - skipped_failed,
                             "total_files": total,
                             "current_file": target.name,
                             "state": "downloading",
@@ -109,6 +117,14 @@ class GofileRunEngine(IDownloader):
                         proxy=proxy,
                     )
                     files.append(str(path))
+                    if cache:
+                        cache.mark(
+                            cache_key,
+                            target.media_url or request.url,
+                            path,
+                            CacheStatus.COMPLETE,
+                            self.engine_id,
+                        )
                 except MvfileDownloadError as exc:
                     message = str(exc)
                     if message.startswith("dependency_missing"):
@@ -121,8 +137,24 @@ class GofileRunEngine(IDownloader):
                             files=files,
                         )
                     errors.append(message)
+                    if cache:
+                        cache.mark(
+                            cache_key,
+                            target.media_url or request.url,
+                            Path(),
+                            CacheStatus.FAILED,
+                            self.engine_id,
+                        )
                 except OSError as exc:
                     errors.append(str(exc))
+                    if cache:
+                        cache.mark(
+                            cache_key,
+                            target.media_url or request.url,
+                            Path(),
+                            CacheStatus.FAILED,
+                            self.engine_id,
+                        )
             if callable(progress):
                 progress(
                     {
@@ -137,12 +169,13 @@ class GofileRunEngine(IDownloader):
                     }
                 )
             status = JobStatus.SUCCESS if files and not errors else JobStatus.FAILED
+            note = f" ({skipped_failed} skipped as failed)" if skipped_failed else ""
             return DownloadResult(
                 job_id=request.job_id,
                 engine_id=self.engine_id,
                 status=status,
                 message=(
-                    f"GoFile.run download completed: {len(files)}/{total} file(s)."
+                    f"GoFile.run download completed: {len(files)}/{total} file(s).{note}"
                     if files
                     else "GoFile.run download failed."
                 ),

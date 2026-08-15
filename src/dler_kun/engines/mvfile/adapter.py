@@ -5,6 +5,7 @@ from urllib.parse import urlparse
 
 from ...engine import IDownloader
 from ...models import (
+    CacheStatus,
     CrawlItem,
     CrawlRequest,
     CrawlResult,
@@ -73,18 +74,24 @@ class MvfileEngine(IDownloader):
                 )
             output_dir = Path(request.output_dir)
             output_dir.mkdir(parents=True, exist_ok=True)
+            cache = request.options.get("cache_manager")
             files: list[str] = []
             errors: list[str] = []
             failed: list[dict[str, str]] = []
+            skipped_failed = 0
             progress = request.options.get("progress_callback")
             total = len(targets)
             for index, entry in enumerate(targets, start=1):
+                cache_key = f"mvfile:{entry.short_link}"
+                if cache and not force and _is_failed(cache, cache_key):
+                    skipped_failed += 1
+                    continue
                 if callable(progress):
                     progress(
                         {
                             "phase": "download",
                             "current_file": entry.name,
-                            "completed_files": index - 1,
+                            "completed_files": index - 1 - skipped_failed,
                             "total_files": total,
                             "progress": round(((index - 1) / total) * 100, 2),
                         }
@@ -101,6 +108,14 @@ class MvfileEngine(IDownloader):
                         proxy=proxy,
                     )
                     files.append(str(path))
+                    if cache:
+                        cache.mark(
+                            cache_key,
+                            entry.media_url or request.url,
+                            path,
+                            CacheStatus.COMPLETE,
+                            self.engine_id,
+                        )
                 except MvfileDownloadError as exc:
                     message = str(exc)
                     if message.startswith("dependency_missing"):
@@ -113,6 +128,14 @@ class MvfileEngine(IDownloader):
                             files=files,
                         )
                     errors.append("download_failed")
+                    if cache:
+                        cache.mark(
+                            cache_key,
+                            entry.media_url or request.url,
+                            Path(),
+                            CacheStatus.FAILED,
+                            self.engine_id,
+                        )
                     failed.append(
                         {
                             "name": entry.name,
@@ -122,6 +145,14 @@ class MvfileEngine(IDownloader):
                     )
                 except OSError as exc:
                     errors.append(str(exc))
+                    if cache:
+                        cache.mark(
+                            cache_key,
+                            entry.media_url or request.url,
+                            Path(),
+                            CacheStatus.FAILED,
+                            self.engine_id,
+                        )
                     failed.append(
                         {
                             "name": entry.name,
@@ -141,12 +172,13 @@ class MvfileEngine(IDownloader):
             status = JobStatus.SUCCESS if files and not errors else JobStatus.FAILED
             if files and errors:
                 status = JobStatus.FAILED
+            note = f" ({skipped_failed} skipped as failed)" if skipped_failed else ""
             return DownloadResult(
                 job_id=request.job_id,
                 engine_id=self.engine_id,
                 status=status,
                 message=(
-                    f"mvfile download completed: {len(files)}/{total} file(s)."
+                    f"mvfile download completed: {len(files)}/{total} file(s).{note}"
                     if files
                     else "mvfile download failed."
                 ),
@@ -154,6 +186,7 @@ class MvfileEngine(IDownloader):
                 errors=(["download_failed"] if errors else []),
                 metadata={
                     "failed": failed[:20],
+                    "skipped_failed": skipped_failed,
                     "items": [
                         {
                             "short_link": item.short_link,
@@ -364,3 +397,8 @@ class MvfileEngine(IDownloader):
             message=code,
             errors=[mapped],
         )
+
+
+def _is_failed(cache: Any, key: str) -> bool:
+    item = cache.get(key)
+    return bool(item and item.get("status") == CacheStatus.FAILED.value)
