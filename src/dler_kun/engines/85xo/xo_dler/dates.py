@@ -3,7 +3,6 @@ from __future__ import annotations
 import re
 from datetime import datetime, timedelta, timezone
 
-
 _RELATIVE_DAYS_PATTERNS = [
     re.compile(r"(?P<days>\d+)\s*日前"),
     re.compile(r"(?P<days>\d+)\s*天前"),

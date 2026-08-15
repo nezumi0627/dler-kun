@@ -1,7 +1,6 @@
 import os
 import time
 from datetime import datetime
-from typing import Optional
 
 from .get_status import GofileAccountManager
 from .go_file_api_manager import GoFileAPIManager
@@ -20,7 +19,7 @@ class TokenManager:
         self.account_manager = GofileAccountManager()
         self.tokens = self.token_file_manager.load_tokens()
 
-    async def get_valid_token(self) -> Optional[str]:
+    async def get_valid_token(self) -> str | None:
         """有効なトークンを取得（環境変数またはtokens.json）"""
         token = os.getenv("GF_TOKEN")
         if token and any(t["token"] == token and t["valid"] for t in self.tokens):

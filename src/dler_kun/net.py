@@ -16,8 +16,6 @@ import threading
 import time
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
-from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 USER_AGENT = (

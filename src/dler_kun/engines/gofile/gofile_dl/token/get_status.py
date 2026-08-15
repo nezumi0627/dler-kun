@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional
+from typing import Any
 
 import aiohttp
 
@@ -17,10 +17,10 @@ class GofileAccountManager:
     def __init__(self, api_server: str = "api"):
         """初期化"""
         self.api_server = api_server
-        self._accounts: Dict[str, Dict[str, Any]] = {}
+        self._accounts: dict[str, dict[str, Any]] = {}
         self._api_manager = GoFileAPIManager()
 
-    async def fetch_account(self, token: Optional[str] = None) -> Dict[str, Any]:
+    async def fetch_account(self, token: str | None = None) -> dict[str, Any]:
         """/accounts/website からゲストアカウント情報を取得
 
         Returns:
@@ -56,18 +56,18 @@ class GofileAccountManager:
         except aiohttp.ClientError as e:
             raise ValueError(f"Failed to fetch account: {e}") from e
 
-    async def sync_account(self, token: Optional[str] = None) -> Dict[str, Any]:
+    async def sync_account(self, token: str | None = None) -> dict[str, Any]:
         """アカウント情報を取得して同期する"""
         account_data = await self.fetch_account(token)
         self._accounts[account_data["email"]] = account_data
         return account_data
 
-    async def get_account_status(self, token: Optional[str] = None) -> Dict[str, Any]:
+    async def get_account_status(self, token: str | None = None) -> dict[str, Any]:
         """アカウント情報を取得（tokenは後方互換のために残す）"""
         await self.sync_account()
         return await self.get_first_active_account()
 
-    async def get_first_active_account(self) -> Dict[str, Any]:
+    async def get_first_active_account(self) -> dict[str, Any]:
         """最初のアクティブなアカウントを取得"""
         if not self._accounts:
             raise ValueError("No accounts available.")

@@ -125,13 +125,12 @@ class Engine85xo(IDownloader):
             )
 
     def _crawl_fast(self, request: CrawlRequest) -> CrawlResult:
-        from .xo_dler import DownloadConfig
-
         from .fast import (
             crawl_fast,
             download_existing_items_parallel,
             to_existing_media_items,
         )
+        from .xo_dler import DownloadConfig
 
         user_agent = str(request.options.get("user_agent") or "")
         stop_event = request.options.get("stop_event")
@@ -217,13 +216,12 @@ class Engine85xo(IDownloader):
 
     def _download_direct(self, request: DownloadRequest) -> DownloadResult:
         try:
-            from .xo_dler import DownloadConfig
-
             from .fast import (
                 direct_media_items_from_url,
                 download_existing_items_parallel,
                 to_existing_media_items,
             )
+            from .xo_dler import DownloadConfig
 
             user_agent = str(request.options.get("user_agent") or "")
             stop_event = request.options.get("stop_event")

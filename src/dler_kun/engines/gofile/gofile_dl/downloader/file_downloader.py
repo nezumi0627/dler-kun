@@ -2,7 +2,6 @@ import asyncio
 import os
 from collections import deque
 from pathlib import Path
-from typing import Optional
 
 import aiohttp
 from rich.console import Console
@@ -20,7 +19,7 @@ from rich.progress import (
 console = Console()
 
 
-def _get_proxy() -> Optional[str]:
+def _get_proxy() -> str | None:
     return os.environ.get("GOFILE_PROXY") or None
 
 
@@ -56,19 +55,19 @@ class FileDownloader:
         token: str,
         chunk_size: int = CHUNK_SIZE,
         max_concurrent_requests: int = MAX_CONCURRENT,
-        proxy: Optional[str] = None,
-        local_addr: Optional[str] = None,
+        proxy: str | None = None,
+        local_addr: str | None = None,
     ):
         self.session = session
         self.token = token
         self._chunk_size = chunk_size
         self._max_concurrent_requests = max_concurrent_requests
-        self._proxy: Optional[str] = proxy or _get_proxy()
-        self._local_addr: Optional[str] = (
+        self._proxy: str | None = proxy or _get_proxy()
+        self._local_addr: str | None = (
             local_addr or os.environ.get("GOFILE_LOCAL_ADDR") or None
         )
         # go_file_downloader から注入される共有 Progress
-        self._progress: Optional[Progress] = None
+        self._progress: Progress | None = None
         # 表示中の task id キュー（最大 _MAX_VISIBLE 件）
         self._visible_tasks: deque = deque()
         self._visible_lock = asyncio.Lock()
@@ -77,7 +76,7 @@ class FileDownloader:
     def chunk_size(self) -> int:
         return self._chunk_size
 
-    async def _add_task(self, description: str, total: Optional[int]) -> TaskID:
+    async def _add_task(self, description: str, total: int | None) -> TaskID:
         """Progress に task を追加し、古いものを非表示にする。"""
         assert self._progress is not None
         async with self._visible_lock:
@@ -113,7 +112,7 @@ class FileDownloader:
                 pass
 
         # ── ダウンロード実行 ───────────────────────────────────────────────
-        tid: Optional[TaskID] = None
+        tid: TaskID | None = None
         name = file_path.name
 
         try:

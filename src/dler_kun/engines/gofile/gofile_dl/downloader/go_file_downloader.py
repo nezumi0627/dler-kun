@@ -5,7 +5,7 @@ import os
 import re
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import aiohttp
 from rich.console import Console
@@ -38,16 +38,16 @@ class GoFileDownloader:
     def __init__(
         self,
         session: aiohttp.ClientSession,
-        token: Optional[str] = None,
-        proxy: Optional[str] = None,
-        local_addr: Optional[str] = None,
+        token: str | None = None,
+        proxy: str | None = None,
+        local_addr: str | None = None,
     ):
         self.session = session
         self.token = token
         self.proxy = proxy
         self.local_addr = local_addr
-        self._api: Optional[GoFileAPI] = None
-        self._downloader: Optional[FileDownloader] = None
+        self._api: GoFileAPI | None = None
+        self._downloader: FileDownloader | None = None
         self._token_manager = None
 
     async def init(self):
@@ -79,9 +79,9 @@ class GoFileDownloader:
 
     async def _extract_files(
         self,
-        content_data: Dict[str, Any],
+        content_data: dict[str, Any],
         parent_path: str = "",
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         if content_data["type"] == "file":
             return [
                 {
@@ -91,7 +91,7 @@ class GoFileDownloader:
                 }
             ]
 
-        files: List[Dict[str, Any]] = []
+        files: list[dict[str, Any]] = []
         folder_path = os.path.join(parent_path, content_data["name"])
         children = content_data.get("children", {})
 
@@ -127,10 +127,10 @@ class GoFileDownloader:
     async def download(
         self,
         url_or_id: str,
-        password: Optional[str] = None,
-        output_dir: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        result: Dict[str, Any] = {
+        password: str | None = None,
+        output_dir: str | None = None,
+    ) -> dict[str, Any]:
+        result: dict[str, Any] = {
             "status": "success",
             "message": "",
             "files": [],

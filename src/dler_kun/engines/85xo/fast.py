@@ -9,7 +9,7 @@ import time
 from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from html import unescape
 from pathlib import Path
 from typing import Any
@@ -602,6 +602,7 @@ def download_item_robust(
     proxy: str = "",
 ) -> bool:
     import requests
+
     from .xo_dler.downloader import download_headers
 
     if stop_event is not None and stop_event.is_set():

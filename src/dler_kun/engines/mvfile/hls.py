@@ -7,7 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
-from ...net import CurlDownloadError, USER_AGENT, curl_download
+from ...net import USER_AGENT, CurlDownloadError, curl_download
 
 STREAM_INF_RE = re.compile(r"#EXT-X-STREAM-INF:([^\n]+)\n([^\n]+)", re.M)
 BANDWIDTH_RE = re.compile(r"BANDWIDTH=(\d+)")

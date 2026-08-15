@@ -20,7 +20,6 @@ from urllib.request import Request, urlopen
 
 from .models import MediaItem
 
-
 MEDIA_EXTENSIONS = (
     ".mp4",
     ".webm",
@@ -486,7 +485,7 @@ class DevToolsClient:
         self.sock.settimeout(timeout)
         try:
             opcode, payload = self.recv_frame()
-        except socket.timeout:
+        except TimeoutError:
             return None
         if opcode == 1:
             return json.loads(payload.decode("utf-8"))

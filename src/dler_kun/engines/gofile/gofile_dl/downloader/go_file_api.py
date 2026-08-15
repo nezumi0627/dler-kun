@@ -22,7 +22,7 @@ import math
 import os
 import time
 import urllib.parse
-from typing import Any, Dict, Optional
+from typing import Any
 
 import aiohttp
 
@@ -43,18 +43,18 @@ _ACCOUNTS_WEBSITE_RETRY_WAIT = 1.0
 _ACCOUNTS_WEBSITE_MAX_RETRY = 2
 
 
-def _get_local_addr() -> Optional[str]:
+def _get_local_addr() -> str | None:
     """バインドするローカルIPを環境変数から取得。"""
     return os.environ.get("GOFILE_LOCAL_ADDR") or None
 
 
-def _get_proxy() -> Optional[str]:
+def _get_proxy() -> str | None:
     return os.environ.get("GOFILE_PROXY") or None
 
 
 def _make_connector(
-    local_addr: Optional[str],
-    proxy: Optional[str],
+    local_addr: str | None,
+    proxy: str | None,
 ) -> aiohttp.BaseConnector:
     """
     local_addr が指定された場合は TCPConnector(local_addr=...) を使う。
@@ -92,22 +92,22 @@ class GoFileAPI:
     def __init__(
         self,
         session: aiohttp.ClientSession,
-        token: Optional[str] = None,
-        proxy: Optional[str] = None,
-        local_addr: Optional[str] = None,
+        token: str | None = None,
+        proxy: str | None = None,
+        local_addr: str | None = None,
     ):
         self._session = session
         self._token = token
-        self._proxy: Optional[str] = proxy or _get_proxy()
-        self._local_addr: Optional[str] = local_addr or _get_local_addr()
-        self._cached_account_token: Optional[str] = None
+        self._proxy: str | None = proxy or _get_proxy()
+        self._local_addr: str | None = local_addr or _get_local_addr()
+        self._cached_account_token: str | None = None
 
     # ── 内部用セッション（accounts/* への直接呼び出し用） ─────────────────
     def _make_session(self) -> aiohttp.ClientSession:
         connector = _make_connector(self._local_addr, self._proxy)
         return aiohttp.ClientSession(connector=connector)
 
-    def _proxy_arg(self) -> Dict[str, Any]:
+    def _proxy_arg(self) -> dict[str, Any]:
         """HTTP/HTTPS プロキシ用 kwargs。SOCKS5 は connector 側で処理済み。"""
         if self._proxy and not self._proxy.startswith("socks"):
             return {"proxy": self._proxy}
@@ -130,7 +130,7 @@ class GoFileAPI:
         return hashlib.sha256(raw.encode()).hexdigest()
 
     # ── accounts/website ───────────────────────────────────────────────────
-    async def _fetch_account_token_from_website(self, token: str) -> Optional[str]:
+    async def _fetch_account_token_from_website(self, token: str) -> str | None:
         headers = {
             "Authorization": f"Bearer {token}",
             "User-Agent": _WT_USER_AGENT,
@@ -170,7 +170,7 @@ class GoFileAPI:
         return None
 
     # ── ゲストアカウント作成 ───────────────────────────────────────────────
-    async def _create_guest_account(self) -> Optional[str]:
+    async def _create_guest_account(self) -> str | None:
         try:
             async with self._make_session() as s:
                 resp = await s.post(
@@ -209,8 +209,8 @@ class GoFileAPI:
     async def fetch_content(
         self,
         content_id: str,
-        password: Optional[str] = None,
-    ) -> Optional[Dict[str, Any]]:
+        password: str | None = None,
+    ) -> dict[str, Any] | None:
         account_token = await self._get_account_token()
         wt = self._generate_wt(account_token)
         url = self._build_url(content_id, password)
@@ -218,7 +218,7 @@ class GoFileAPI:
 
         # 502/503/504 は一時的なサーバー障害なのでリトライする
         _RETRYABLE = {502, 503, 504}
-        last_err: Optional[Exception] = None
+        last_err: Exception | None = None
 
         for attempt in range(2):  # 最大 2 回試行 (0, 1)
             if attempt > 0:
@@ -274,8 +274,8 @@ class GoFileAPI:
         )
 
     # ── URL 構築 ────────────────────────────────────────────────────────────
-    def _build_url(self, content_id: str, password: Optional[str] = None) -> str:
-        params: Dict[str, str] = {
+    def _build_url(self, content_id: str, password: str | None = None) -> str:
+        params: dict[str, str] = {
             "contentFilter": "",
             "page": "1",
             "pageSize": self.PAGE_SIZE,
@@ -287,7 +287,7 @@ class GoFileAPI:
         return f"{self.CONTENT_URL}/{content_id}?{urllib.parse.urlencode(params)}"
 
     # ── ヘッダー構築 ────────────────────────────────────────────────────────
-    def _build_headers(self, wt: str, account_token: str) -> Dict[str, str]:
+    def _build_headers(self, wt: str, account_token: str) -> dict[str, str]:
         return {
             "Authorization": f"Bearer {account_token}",
             "X-Website-Token": wt,
