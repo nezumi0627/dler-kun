@@ -12,7 +12,7 @@ dler-kun [--json] <command> [options]
 |----------|------|
 | `--json` | 人間向けサマリーの代わりに機械可読 JSON を stdout に出力 |
 
-実行中の `crawl` / `download` / `ranking` は **Ctrl+C** で安全に停止できます。進行中の転送は打ち切られ、curl の途中データ（`.part`）は再開用に残ります。終了コードは 130。
+実行中の `crawl` / `download` / `ranking` は **Ctrl+C** で安全に停止できます。進行中の転送は打ち切られ、途中データは再開用に残ります。mvfile / gofilerun は取得済み HLS セグメントを `.hlsd` ステージングに保存するため、再実行時に途中から再開します（完了済みファイルはスキップ）。終了コードは 130。
 
 85xo の fast クロールは動画 URL 解決の結果を `fast_capture_cache.json`（プロジェクト直下、TTL 30日）にキャッシュします。同じ動画ページを再解決しないため再クロールが高速化します。削除すれば再取得します。
 
@@ -26,6 +26,18 @@ dler-kun [--json] <command> [options]
 | `ranking <service>` | ランキングクロール（`gofile` のみ） |
 | `cancel [job_id]` | 実行中ジョブをキャンセル |
 | `config` | 有効設定を JSON 表示 |
+| `help` | 全コマンド・オプションの usage を表示 |
+
+### 共通オプション（download / crawl / ranking で使用可）
+
+| オプション | 説明 |
+|----------|------|
+| `--local-addr IP` | ソース IP バインド（例: iPhone USB テザリング `172.20.10.2`）。config `local_addr` を上書き。※ mixixxx のみ非対応（Chrome が通信を所有） |
+| `--proxy URL` | HTTP/SOCKS プロキシ（config `proxy` を上書き） |
+| `--user-agent UA` | User-Agent 上書き |
+| `--cookie VALUE` | Cookie ヘッダ上書き |
+| `--api-base URL` | mvfile / gofilerun: API ベース URL 上書き |
+| `--timeout SEC` | ネットワークタイムアウト秒 |
 
 ---
 
@@ -59,10 +71,14 @@ python -m dler_kun download URL [URL ...] [-o OUTPUT_DIR] [options]
 | `--seg-workers` | twimg セグメントワーカー |
 | `--quality` | twimg 画質 |
 | `--password` | GoFile フォルダパスワード |
-| `--related` | mvfile: 単一動画ページをチャンネルの関連リストに展開して全件 DL |
+| `--single` | mvfile: 対象の1ファイルのみ DL（既定: チャンネルの関連リスト全件） |
+| `--hls-workers` | 8 | mvfile: 並列 HLS セグメント取得数 |
+| `--parallel-urls` | 自動（最大4） | URL 単位の並列 DL。1 で順次 |
 | `--segment-concurrency` | 4 | mixixxx: 同時 HLS セグメント取得数 |
 
 複数 URL は順次処理。各 URL は個別に detector → engine download されます。
+
+`download` は URL 末尾の ID（例 `https://gofile.website/ZLk4B5` → `ZLk4B5`）をフォルダ名にして `-o` 配下に保存します。`crawl` は指定フォルダ直下にまとめて保存します。
 
 **終了コード**: 全件成功 → 0、1 件でも失敗 → 1
 

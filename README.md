@@ -47,7 +47,7 @@ dler-kun ranking gofile --source douga --download
 | **gofilerun** | gofile.run | ✓ | ✓ | |
 | **85xo** | 85xo.com · 85po.net · 85po.com | ✓ | ✓ | |
 | **twimg** | twimg-media | ✓ | | |
-| **mvfile** | mvfile.com · tweetfile.com · gofile.website · image-share.cc | ✓ | ✓ | |
+| **mvfile** | mvfile.com · tweetfile.com · tweetplay.com · gofile.website · gofile.rocks · image-share.cc · imagedist.com | ✓ | ✓ | |
 | **videy** | video.twimg.news · videy.co | ✓ | | |
 | **mixixxx** | mixi-xxx.cc | ✓ | ✓ | |
 

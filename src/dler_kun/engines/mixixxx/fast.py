@@ -13,7 +13,6 @@ import base64
 import re
 import shutil
 import subprocess
-import sys
 import tempfile
 import time
 from collections.abc import Callable
@@ -133,15 +132,17 @@ class MixiSession:
         self.close()
 
     def open(self) -> None:
-        sys_path_for_vendor()
-        from xo_dler.network_media import (
-            DevToolsClient,
-            NetworkCaptureConfig,
-            find_browser,
-            find_free_port,
-            start_browser,
-            wait_for_page_ws_url,
+        from importlib import import_module
+
+        network_media = import_module(
+            "dler_kun.engines.85xo.xo_dler.network_media"
         )
+        DevToolsClient = network_media.DevToolsClient
+        NetworkCaptureConfig = network_media.NetworkCaptureConfig
+        find_browser = network_media.find_browser
+        find_free_port = network_media.find_free_port
+        start_browser = network_media.start_browser
+        wait_for_page_ws_url = network_media.wait_for_page_ws_url
 
         self.browser_path = self.browser_path or find_browser()
         if not self.browser_path:
@@ -166,8 +167,12 @@ class MixiSession:
         self._client.call("Runtime.enable")
 
     def close(self) -> None:
-        sys_path_for_vendor()
-        from xo_dler.network_media import stop_browser
+        from importlib import import_module
+
+        network_media = import_module(
+            "dler_kun.engines.85xo.xo_dler.network_media"
+        )
+        stop_browser = network_media.stop_browser
 
         if self._client is not None:
             self._client.__exit__(None, None, None)
@@ -449,9 +454,3 @@ class MixiSession:
             return output_path
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
-
-
-def sys_path_for_vendor() -> None:
-    path = str(Path(__file__).resolve().parents[2] / "vendor" / "85xo")
-    if path not in sys.path:
-        sys.path.insert(0, path)

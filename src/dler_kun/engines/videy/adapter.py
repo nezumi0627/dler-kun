@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import re
-import urllib.request
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -12,6 +11,7 @@ from ...models import (
     EngineCapability,
     JobStatus,
 )
+from ...net import fetch_text
 
 VIDEY_ID_RE = re.compile(r'videy["\']?\s*[:=]\s*["\']([A-Za-z0-9]+)["\']')
 CDN_URL = "https://cdn.videy.co/{vid}.mp4"
@@ -23,16 +23,15 @@ class VideyEngine(IDownloader):
     display_name = "Videy Engine"
     capabilities = EngineCapability(download=True, crawl=False, ranking=False)
 
-    def __init__(self, project_path: str | Path | None = None) -> None:
-        self.project_path = Path(project_path) if project_path else Path(__file__).resolve().parent
-
     def detect(self, url: str) -> bool:
         host = (urlparse(url if "://" in url else f"https://{url}").hostname or "").lower()
         return any(host == d or host.endswith(f".{d}") for d in DOMAINS)
 
     def download(self, request: DownloadRequest) -> DownloadResult:
+        local_addr = str(request.options.get("local_addr") or "")
+        proxy = str(request.options.get("proxy") or "")
         try:
-            html = self._fetch_page(request.url)
+            html = self._fetch_page(request.url, local_addr=local_addr, proxy=proxy)
         except Exception as exc:  # noqa: BLE001
             return DownloadResult(
                 job_id=request.job_id,
@@ -61,7 +60,7 @@ class VideyEngine(IDownloader):
                 files.append(str(dest))
                 continue
             try:
-                self._download(vid, dest)
+                self._download(vid, dest, local_addr=local_addr, proxy=proxy)
                 files.append(str(dest))
             except Exception as exc:  # noqa: BLE001
                 errors.append(f"{vid}: {exc}")
@@ -80,16 +79,23 @@ class VideyEngine(IDownloader):
             metadata={"videos": len(ids), "failed": errors[:20]},
         )
 
-    def _fetch_page(self, url: str) -> str:
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            return resp.read().decode("utf-8", "replace")
+    def _fetch_page(self, url: str, local_addr: str = "", proxy: str = "") -> str:
+        return fetch_text(
+            url,
+            headers={"User-Agent": "Mozilla/5.0"},
+            local_addr=local_addr,
+            proxy=proxy,
+            timeout_seconds=60,
+        )
 
-    def _download(self, vid: str, dest: Path) -> None:
-        req = urllib.request.Request(CDN_URL.format(vid=vid), headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=180) as resp, open(dest, "wb") as f:
-            while True:
-                chunk = resp.read(1 << 20)
-                if not chunk:
-                    break
-                f.write(chunk)
+    def _download(self, vid: str, dest: Path, local_addr: str = "", proxy: str = "") -> None:
+        from ...net import curl_download
+
+        curl_download(
+            CDN_URL.format(vid=vid),
+            dest,
+            headers={"User-Agent": "Mozilla/5.0"},
+            local_addr=local_addr,
+            proxy=proxy,
+            read_timeout_seconds=180,
+        )

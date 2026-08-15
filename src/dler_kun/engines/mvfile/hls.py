@@ -3,17 +3,11 @@ from __future__ import annotations
 import re
 import shutil
 import subprocess
-import tempfile
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
-from .dns import curl_resolve_args, resolve_ipv4
-
-USER_AGENT = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) "
-    "Chrome/124.0.0.0 Safari/537.36"
-)
+from ...net import CurlDownloadError, USER_AGENT, curl_download
 
 STREAM_INF_RE = re.compile(r"#EXT-X-STREAM-INF:([^\n]+)\n([^\n]+)", re.M)
 BANDWIDTH_RE = re.compile(r"BANDWIDTH=(\d+)")
@@ -40,6 +34,9 @@ def download_hls_to_mp4(
     referer: str,
     force: bool = False,
     timeout_seconds: float = 30.0,
+    hls_workers: int = 8,
+    local_addr: str = "",
+    proxy: str = "",
 ) -> Path:
     if not media_url:
         raise MvfileDownloadError("media url missing")
@@ -55,45 +52,54 @@ def download_hls_to_mp4(
         return target
 
     part = target.with_suffix(target.suffix + ".part.mp4")
-    if part.exists():
-        part.unlink(missing_ok=True)
+    # Persistent segment staging so interrupted downloads resume from saved
+    # segments instead of restarting from zero. Cleaned up only on success.
+    staging = target.with_name(target.stem + ".hlsd")
+    staging.mkdir(parents=True, exist_ok=True)
 
-    with tempfile.TemporaryDirectory(prefix="mvfile-hls-") as tmp:
-        tmp_dir = Path(tmp)
-        master_path = tmp_dir / "master.m3u8"
+    master_path = staging / "master.m3u8"
+    _curl_download(
+        curl,
+        media_url,
+        master_path,
+        referer=referer,
+        timeout_seconds=timeout_seconds,
+        local_addr=local_addr,
+        proxy=proxy,
+    )
+    master_text = master_path.read_text(encoding="utf-8", errors="replace")
+    variant_url = select_best_variant(media_url, master_text)
+    variant_path = staging / "index.m3u8"
+    if variant_url == media_url:
+        variant_path.write_text(master_text, encoding="utf-8")
+        playlist_text = master_text
+        playlist_base = media_url
+    else:
         _curl_download(
             curl,
-            media_url,
-            master_path,
+            variant_url,
+            variant_path,
             referer=referer,
             timeout_seconds=timeout_seconds,
+            local_addr=local_addr,
+            proxy=proxy,
         )
-        master_text = master_path.read_text(encoding="utf-8", errors="replace")
-        variant_url = select_best_variant(media_url, master_text)
-        variant_path = tmp_dir / "index.m3u8"
-        if variant_url == media_url:
-            variant_path.write_text(master_text, encoding="utf-8")
-            playlist_text = master_text
-            playlist_base = media_url
-        else:
-            _curl_download(
-                curl,
-                variant_url,
-                variant_path,
-                referer=referer,
-                timeout_seconds=timeout_seconds,
-            )
-            playlist_text = variant_path.read_text(encoding="utf-8", errors="replace")
-            playlist_base = variant_url
+        playlist_text = variant_path.read_text(encoding="utf-8", errors="replace")
+        playlist_base = variant_url
 
-        local_playlist = materialize_playlist(
-            curl,
-            playlist_text,
-            playlist_base,
-            tmp_dir,
-            referer=referer,
-            timeout_seconds=timeout_seconds,
-        )
+    local_playlist = materialize_playlist(
+        curl,
+        playlist_text,
+        playlist_base,
+        staging,
+        referer=referer,
+        timeout_seconds=timeout_seconds,
+        workers=max(1, hls_workers),
+        local_addr=local_addr,
+        proxy=proxy,
+        reuse=not force,
+    )
+    try:
         completed = subprocess.run(
             [
                 ffmpeg,
@@ -117,6 +123,13 @@ def download_hls_to_mp4(
             detail = (completed.stderr or completed.stdout or "").strip()
             raise MvfileDownloadError(detail or f"ffmpeg exit {completed.returncode}")
         part.replace(target)
+    except BaseException:
+        # Keep staging only if it has partial segments worth resuming.
+        # Empty dirs (master fetch failed, e.g. media deleted) are junk.
+        if not any(staging.glob("seg_*")):
+            shutil.rmtree(staging, ignore_errors=True)
+        raise
+    shutil.rmtree(staging, ignore_errors=True)
     return target
 
 
@@ -141,8 +154,13 @@ def materialize_playlist(
     *,
     referer: str,
     timeout_seconds: float,
+    workers: int = 8,
+    local_addr: str = "",
+    proxy: str = "",
+    reuse: bool = False,
 ) -> Path:
     lines = playlist_text.splitlines()
+    segments: list[tuple[str, Path]] = []
     rewritten: list[str] = []
     segment_index = 0
     for line in lines:
@@ -154,15 +172,26 @@ def materialize_playlist(
         suffix = Path(urlparse(segment_url).path).suffix or ".ts"
         local_name = f"seg_{segment_index:05d}{suffix}"
         segment_index += 1
-        local_path = work_dir / local_name
+        segments.append((segment_url, work_dir / local_name))
+        rewritten.append(local_name)
+
+    def fetch(spec: tuple[str, Path]) -> None:
+        url, path = spec
+        if reuse and path.exists() and path.stat().st_size > 0:
+            return
         _curl_download(
             curl_path,
-            segment_url,
-            local_path,
+            url,
+            path,
             referer=referer,
             timeout_seconds=timeout_seconds,
+            local_addr=local_addr,
+            proxy=proxy,
         )
-        rewritten.append(local_name)
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        list(pool.map(fetch, segments))
+
     out = work_dir / "local.m3u8"
     out.write_text("\n".join(rewritten) + "\n", encoding="utf-8")
     return out
@@ -182,37 +211,26 @@ def _curl_download(
     *,
     referer: str,
     timeout_seconds: float,
+    local_addr: str = "",
+    proxy: str = "",
 ) -> None:
-    host = urlparse(url).hostname or ""
-    command = [
-        curl_path,
-        "-fsSL",
-        "--connect-timeout",
-        str(max(5, int(timeout_seconds // 3) or 5)),
-        "--max-time",
-        str(max(30, int(timeout_seconds * 20))),
-        "-A",
-        USER_AGENT,
-        "-H",
-        f"Referer: {referer}",
-        "-H",
-        f"Origin: {_origin_from_referer(referer)}",
-        "-o",
-        str(output_path),
-        "--",
-        url,
-    ]
-    # Prefer DoH-resolved IP to bypass poisoned local DNS for vid CDN.
-    if host and resolve_ipv4(host):
-        command[1:1] = curl_resolve_args(host)
-    completed = subprocess.run(
-        command,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        check=False,
-    )
-    if completed.returncode != 0 or not output_path.exists() or output_path.stat().st_size <= 0:
-        detail = (completed.stderr or completed.stdout or "").strip()
-        raise MvfileDownloadError(detail or f"curl exit {completed.returncode}")
+    try:
+        curl_download(
+            url,
+            output_path,
+            curl_path=curl_path,
+            headers={
+                "User-Agent": USER_AGENT,
+                "Referer": referer,
+                "Origin": _origin_from_referer(referer),
+            },
+            local_addr=local_addr,
+            proxy=proxy,
+            # Prefer DoH-resolved IP to bypass poisoned local DNS for vid CDN.
+            doh_host=urlparse(url).hostname or None,
+            connect_timeout_seconds=max(5, int(timeout_seconds // 3) or 5),
+            read_timeout_seconds=timeout_seconds,
+            max_time_seconds=max(30, int(timeout_seconds * 20)),
+        )
+    except CurlDownloadError as exc:
+        raise MvfileDownloadError(str(exc)) from exc

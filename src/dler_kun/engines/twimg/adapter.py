@@ -67,6 +67,9 @@ class TwimgEngine(IDownloader):
             command.extend(["-w", str(request.options["seg_workers"])])
         if request.options.get("quality"):
             command.extend(["-q", str(request.options["quality"])])
+        local_addr = str(request.options.get("local_addr") or "")
+        if local_addr:
+            command.extend(["--local-addr", local_addr])
 
         completed = subprocess.run(
             command,

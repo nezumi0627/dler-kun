@@ -61,12 +61,18 @@ src/dler_kun/engines/
 
 ## URL 判定
 
+> **名前だけで判定しない** — 類似ドメイン名でも中身が全く異なる場合がある。`gofile.rocks` / `gofile.website` / `gofile.run` は gofile.io のミラーではなく、mvfile 系（fun800/vll ネットディスク）の別サービス。`tweetfile.com` / `tweetplay.com` / `image-share.cc` / `imagedist.com` も同様に vll 系。新規ドメインを追加する際は、名前から推測せずに実際のバックエンド（SPA のフレームワーク、API ホスト、レスポンス構造）を確認してからルーティング先を決めること。
+
 | ドメイン | エンジン ID |
 |----------|-------------|
 | `gofile.io` | `gofile` |
-| `85xo.com` | `85xo` |
-| `tweetfile.com`, `twimg-media.com`, `cdn1.twimg-media.com` | `twimg` |
-| `mvfile.com`, `cdn.mvfile.com` | `mvfile` |
+| `gofile-douga.com`, `gofilelab.com` | `gofile`（一覧ページ） |
+| `gofile.run` | `gofilerun` |
+| `85xo.com`, `85po.net`, `85po.com` | `85xo` |
+| `twimg-media.com`, `cdn1.twimg-media.com` | `twimg` |
+| `mvfile.com`, `file-photo.com`, `tweetfile.com`, `tweetplay.com`, `gofile.website`, `gofile.rocks`, `image-share.cc`, `imagedist.com` | `mvfile` |
+| `video.twimg.news`, `videy.co` | `videy` |
+| `mixi-xxx.cc` | `mixixxx` |
 
 未対応 URL は `unsupported`（エラーコード `unsupported_service`）を返します。
 
@@ -123,7 +129,6 @@ Git 管理外（プロジェクトルート相対）:
 
 ## 非交渉ルール
 
-1. vendored downloader の内部ロジックを書き換えない
-2. 変更は adapter / wrapper / subprocess 境界に留める
-3. 外部プロジェクトパス（`E:\projects\...`）は開発時の一時 override のみ
-4. 秘密情報（Cookie、トークン、認証ヘッダ）をログに出さない
+1. 統合済みエンジンコード（`engines/gofile/gofile_dl/`、`engines/85xo/xo_dler/`）は dler-kun の一部として所有・変更できる
+2. vendored の twimg スクリプトは外部ツール扱い（変更は wrapper 側に留める）
+3. 秘密情報（Cookie、トークン、認証ヘッダ）をログに出さない

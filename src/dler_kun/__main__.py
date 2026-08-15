@@ -28,12 +28,29 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument(
+        "--local-addr",
+        help="Bind source IP for downloads (e.g. iPhone USB tethering 172.20.10.2)",
+    )
+    common.add_argument("--proxy", help="HTTP/SOCKS proxy override")
+    common.add_argument("--user-agent", dest="user_agent", help="User-Agent override")
+    common.add_argument("--cookie", help="Cookie header override")
+
+    engine_opts = argparse.ArgumentParser(add_help=False)
+    engine_opts.add_argument("--api-base", help="mvfile/gofilerun: API base URL override")
+    engine_opts.add_argument("--timeout", dest="timeout_seconds", type=float, help="Network timeout seconds")
+
     detect = sub.add_parser("detect", help="Detect which engine handles a URL")
     detect.add_argument("url")
 
     sub.add_parser("sites", help="List supported sites / engines")
 
-    download = sub.add_parser("download", help="Download one or more URLs")
+    sub.add_parser("help", help="Show this help")
+
+    download = sub.add_parser(
+        "download", help="Download one or more URLs", parents=[common, engine_opts]
+    )
     download.add_argument("urls", nargs="+")
     download.add_argument("-o", "--output-dir", type=Path)
     download.add_argument("--force", action="store_true")
@@ -51,12 +68,26 @@ def build_parser() -> argparse.ArgumentParser:
     download.add_argument("--quality")
     download.add_argument("--password")
     download.add_argument(
-        "--related",
+        "--single",
         action="store_true",
-        help="mvfile: also download related files from the channel list",
+        help="mvfile: download only the requested file (default: whole channel list)",
+    )
+    download.add_argument(
+        "--hls-workers",
+        type=int,
+        default=None,
+        help="mvfile: concurrent HLS segment fetches (default 8)",
+    )
+    download.add_argument(
+        "--parallel-urls",
+        type=int,
+        default=None,
+        help="Download multiple URLs concurrently (default: auto, up to 4; 1 = sequential)",
     )
 
-    crawl = sub.add_parser("crawl", help="Crawl an engine and optionally download")
+    crawl = sub.add_parser(
+        "crawl", help="Crawl an engine and optionally download", parents=[common, engine_opts]
+    )
     crawl.add_argument(
         "service", choices=["85xo", "gofile", "mvfile", "gofilerun", "mixixxx"]
     )
@@ -92,6 +123,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="mixixxx: concurrent HLS segment fetches per browser session (default 4)",
     )
     crawl.add_argument(
+        "--hls-workers",
+        type=int,
+        default=None,
+        help="mvfile: concurrent HLS segment fetches (default 8)",
+    )
+    crawl.add_argument(
         "--download-read-timeout",
         type=float,
         help="Abort only when transfer stalls below 1 KiB/s for this many seconds",
@@ -111,7 +148,9 @@ def build_parser() -> argparse.ArgumentParser:
     crawl.add_argument("--limit", type=int)
     crawl.add_argument("--max-more-clicks", type=int)
 
-    ranking = sub.add_parser("ranking", help="Run a ranking crawler (gofile)")
+    ranking = sub.add_parser(
+        "ranking", help="Run a ranking crawler (gofile)", parents=[common]
+    )
     ranking.add_argument("service", choices=["gofile"])
     ranking.add_argument("--seed", action="append", default=[])
     ranking.add_argument("--source", action="append", default=[])
@@ -164,11 +203,17 @@ def _dispatch(
     if args.command == "sites":
         return print_sites(app.sites(), as_json=as_json)
 
+    if args.command == "help":
+        parser.print_help()
+        return 0
+
     if args.command == "download":
         options = _options_from_args(
             args,
-            {"force", "verbose", "parallel", "seg_workers", "segment_concurrency", "quality", "password", "metadata", "related"},
+            {"force", "verbose", "parallel", "seg_workers", "segment_concurrency", "quality", "password", "metadata", "hls_workers", "parallel_urls", "local_addr", "proxy", "user_agent", "cookie", "api_base", "timeout_seconds"},
         )
+        if getattr(args, "single", False):
+            options["related"] = False
         return print_download_results(
             app.download_urls(args.urls, args.output_dir, options),
             as_json=as_json,
@@ -191,11 +236,18 @@ def _dispatch(
                 "discover_workers",
                 "parallel_downloads",
                 "segment_concurrency",
+                "hls_workers",
                 "download_read_timeout",
                 "download_attempts",
                 "download_max_time",
                 "limit",
                 "max_more_clicks",
+                "local_addr",
+                "proxy",
+                "user_agent",
+                "cookie",
+                "api_base",
+                "timeout_seconds",
             },
         )
         if args.source:
@@ -213,7 +265,9 @@ def _dispatch(
         )
 
     if args.command == "ranking":
-        options = _options_from_args(args, {"limit", "max_more_clicks"})
+        options = _options_from_args(
+            args, {"limit", "max_more_clicks", "local_addr", "proxy", "user_agent", "cookie"}
+        )
         if args.source:
             options["sources"] = list(args.source)
         return print_job_result(

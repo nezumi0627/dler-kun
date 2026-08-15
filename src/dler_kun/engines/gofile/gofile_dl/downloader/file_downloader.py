@@ -101,8 +101,8 @@ class FileDownloader:
 
         # ── DL済み判定 ─────────────────────────────────────────────────────
         if file_path.exists():
-            if expected_size > 0 and file_path.stat().st_size == expected_size:
-                # スキップ：行を追加せず、カウンタだけ進める
+            if file_path.stat().st_size > 0:
+                # スキップ：完了済み（非空）ファイルは再 DL しない
                 return True
             file_path.unlink()
 

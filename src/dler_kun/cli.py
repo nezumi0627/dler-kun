@@ -63,6 +63,15 @@ def print_download_results(
             print(f"  {url}")
         if errors and status not in {"success", "ok", "complete", "completed"}:
             print(f"  errors: {', '.join(str(error) for error in errors)}")
+        failed = (result.get("metadata") or {}).get("failed") or []
+        failed_names = [
+            str(item.get("name") or item) if isinstance(item, dict) else str(item)
+            for item in failed
+        ]
+        if failed_names:
+            print("  failed:")
+            for name in failed_names:
+                print(f"    - {name}")
     return _exit_code_from_statuses(item.get("status") for item in results)
 
 

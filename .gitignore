@@ -34,6 +34,9 @@ tmp/
 # Local logs
 *.log
 
+# Local agent state (never commit)
+.claude/
+
 # Secrets / service state
 .env
 .env.*

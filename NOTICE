@@ -1,14 +1,18 @@
 # Notice
 
-## Vendored engines
+## Integrated engines
 
-`src/dler_kun/vendor/` contains downloader engine code migrated from the
-project author's own earlier tools, and is licensed under the same
-[LICENSE](LICENSE) (MIT):
+Downloader engine code migrated from the project author's own earlier tools is
+embedded in the engine packages, licensed under the same [LICENSE](LICENSE)
+(MIT):
 
-- `vendor/85xo/` (`xo_dler`) — 85xo crawler/downloader
-- `vendor/gofile/` (`gofile_dl`, `ranking_dl`) — GoFile downloader / ranking collector
-- `vendor/twimg/` (`download_twitter_media.py`) — twitter/tweetfile media downloader
+- `src/dler_kun/engines/85xo/xo_dler/` — 85xo crawler/downloader (from `vendor/85xo/xo_dler`)
+- `src/dler_kun/engines/gofile/gofile_dl/` — GoFile downloader (from `vendor/gofile/gofile_dl`)
+
+## Vendored tools
+
+- `src/dler_kun/vendor/twimg/download_twitter_media.py` — twitter/tweetfile
+  media downloader (invoked as a subprocess; still vendored)
 
 No third-party code is embedded; these are the author's own implementations.
 

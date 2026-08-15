@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import re
 import signal
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, is_dataclass
 from enum import Enum
 from pathlib import Path
@@ -72,19 +74,14 @@ class DlerKunApp:
             pass  # Only the main thread may install a signal handler.
 
     def _register_engines(self) -> None:
-        engine_paths = self.config.get("engine_paths", {})
-        self.factory.register(TwimgEngine(engine_paths.get("twimg") or None))
-        self.factory.register(
-            GoFileEngine(
-                engine_paths.get("gofile") or None,
-                proxy=self.proxy.get_proxy(),
-            )
-        )
-        self.factory.register(Engine85xo(engine_paths.get("85xo") or None))
-        self.factory.register(MvfileEngine(engine_paths.get("mvfile") or None))
-        self.factory.register(GofileRunEngine(engine_paths.get("gofilerun") or None))
-        self.factory.register(VideyEngine(engine_paths.get("videy") or None))
-        self.factory.register(MixixxxEngine(engine_paths.get("mixixxx") or None))
+        twimg_path = self.config.get("engine_paths", {}).get("twimg") or None
+        self.factory.register(TwimgEngine(twimg_path))
+        self.factory.register(GoFileEngine(proxy=self.proxy.get_proxy()))
+        self.factory.register(Engine85xo())
+        self.factory.register(MvfileEngine())
+        self.factory.register(GofileRunEngine())
+        self.factory.register(VideyEngine())
+        self.factory.register(MixixxxEngine())
 
     def sites(self) -> dict[str, list[str]]:
         return self.detector.supported_domains()
@@ -118,87 +115,110 @@ class DlerKunApp:
             "cookie": str(
                 (options or {}).get("cookie") or self.cookies.get_cookie() or ""
             ),
+            "local_addr": str(
+                (options or {}).get("local_addr") or self.config.get("local_addr", "") or ""
+            ),
+            "proxy": str(
+                (options or {}).get("proxy") or self.config.get("proxy", "") or ""
+            ),
         }
-        results: list[dict[str, Any]] = []
+        parallel = int((options or {}).get("parallel_urls", 0))
+        if parallel <= 0:
+            parallel = min(len(urls), AUTO_PARALLEL_URLS)
+        parallel = max(1, parallel)
         self.progress.start_live()
         try:
-            for url in urls:
-                detected = self.factory.detect(url)
-                if not detected:
-                    self.logs.warning(
-                        "対応サービスではありません", engine_id=None, url=url
+            if parallel <= 1:
+                results = [
+                    self._download_one_url(url, output, base_options) for url in urls
+                ]
+            else:
+                with ThreadPoolExecutor(max_workers=parallel) as pool:
+                    results = list(
+                        pool.map(
+                            lambda url: self._download_one_url(url, output, base_options),
+                            urls,
+                        )
                     )
-                    results.append(
-                        {
-                            "url": url,
-                            "status": JobStatus.UNSUPPORTED.value,
-                            "message": "対応サービスではありません",
-                        }
-                    )
-                    continue
-
-                queue_job = self.queue.create(
-                    "download", detected.engine_id, url, str(output)
-                )
-                request = DownloadRequest(
-                    url=url,
-                    output_dir=output,
-                    job_id=queue_job.id,
-                    engine_id=detected.engine_id,
-                    options={
-                        **base_options,
-                        **self._engine_download_options(detected.engine_id),
-                        "progress_callback": lambda state, job_id=queue_job.id: (
-                            self._update_job_progress(job_id, state)
-                        ),
-                    },
-                )
-                self.queue.update(queue_job.id, status=JobStatus.RUNNING)
-                self.progress.update(
-                    queue_job.id,
-                    completed_files=0,
-                    total_files=1,
-                    current_file=_short_label(url),
-                    state="running",
-                )
-                self.logs.info(
-                    "Download started",
-                    engine_id=detected.engine_id,
-                    job_id=queue_job.id,
-                )
-                try:
-                    self._raise_if_cancelled(queue_job.id)
-                    result = self._run_download_with_retry(detected, request)
-                    self._raise_if_cancelled(queue_job.id)
-                except JobCancelled:
-                    result_dict = self._cancel_result(
-                        queue_job.id,
-                        detected.engine_id,
-                        "Download cancelled",
-                        url=url,
-                    )
-                    results.append(result_dict)
-                    self.history.append({"kind": "download", **result_dict})
-                    continue
-                cancelled = self._finish_job(
-                    result.job_id,
-                    result.status,
-                    result.message,
-                    result.engine_id,
-                    result.errors,
-                )
-                if cancelled is not None:
-                    cancelled["url"] = url
-                    results.append(cancelled)
-                    self.history.append({"kind": "download", **cancelled})
-                    continue
-                result_dict = to_jsonable(result)
-                result_dict["url"] = url
-                results.append(result_dict)
-                self.history.append({"kind": "download", **result_dict})
         finally:
             self.progress.close_live()
         return results
+
+    def _download_one_url(
+        self,
+        url: str,
+        output: Path,
+        base_options: dict[str, Any],
+    ) -> dict[str, Any]:
+        detected = self.factory.detect(url)
+        if not detected:
+            self.logs.warning("対応サービスではありません", engine_id=None, url=url)
+            return {
+                "url": url,
+                "status": JobStatus.UNSUPPORTED.value,
+                "message": "対応サービスではありません",
+            }
+        item_output = output
+        url_id = _download_id_from_url(url)
+        if url_id:
+            item_output = output / url_id
+        queue_job = self.queue.create(
+            "download", detected.engine_id, url, str(item_output)
+        )
+        request = DownloadRequest(
+            url=url,
+            output_dir=item_output,
+            job_id=queue_job.id,
+            engine_id=detected.engine_id,
+            options={
+                **self._engine_download_options(detected.engine_id),
+                **base_options,
+                "progress_callback": lambda state, job_id=queue_job.id: (
+                    self._update_job_progress(job_id, state)
+                ),
+            },
+        )
+        self.queue.update(queue_job.id, status=JobStatus.RUNNING)
+        self.progress.update(
+            queue_job.id,
+            completed_files=0,
+            total_files=1,
+            current_file=_short_label(url),
+            state="running",
+        )
+        self.logs.info(
+            "Download started",
+            engine_id=detected.engine_id,
+            job_id=queue_job.id,
+        )
+        try:
+            self._raise_if_cancelled(queue_job.id)
+            result = self._run_download_with_retry(detected, request)
+            self._raise_if_cancelled(queue_job.id)
+        except JobCancelled:
+            result_dict = self._cancel_result(
+                queue_job.id,
+                detected.engine_id,
+                "Download cancelled",
+                url=url,
+            )
+            self.history.append({"kind": "download", **result_dict})
+            return result_dict
+        cancelled = self._finish_job(
+            result.job_id,
+            result.status,
+            result.message,
+            result.engine_id,
+            result.errors,
+        )
+        if cancelled is not None:
+            cancelled["url"] = url
+            self.history.append({"kind": "download", **cancelled})
+            return cancelled
+        result_dict = to_jsonable(result)
+        result_dict["url"] = url
+        self.history.append({"kind": "download", **result_dict})
+        return result_dict
 
     def crawl(
         self,
@@ -275,6 +295,7 @@ class DlerKunApp:
                 "cache_manager": self.cache,
                 "resolve_cache": self.resolve_cache,
                 "stop_event": self.stop_event,
+                "local_addr": str(self.config.get("local_addr", "") or ""),
                 "progress_callback": lambda state: self._update_job_progress(
                     queue_job.id,
                     state,
@@ -596,6 +617,24 @@ def _short_label(url: str, max_len: int = 48) -> str:
     if len(text) <= max_len:
         return text
     return text[: max_len - 1] + "…"
+
+
+AUTO_PARALLEL_URLS = 4
+
+
+def _download_id_from_url(url: str) -> str | None:
+    """Last path segment of a URL, used as the per-download folder name."""
+    from urllib.parse import unquote, urlsplit
+
+    try:
+        path = urlsplit(str(url or "")).path.rstrip("/")
+    except ValueError:
+        return None
+    if not path:
+        return None
+    segment = unquote(path.rsplit("/", 1)[-1])
+    segment = re.sub(r'[<>:"/\\|?*\x00-\x1f]+', "_", segment).strip(" ._")
+    return segment or None
 
 
 def to_jsonable(value: Any) -> Any:

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import sys
 import threading
 from pathlib import Path
 
@@ -27,19 +26,10 @@ class MixixxxEngine(IDownloader):
     display_name = "mixixxx Engine"
     capabilities = EngineCapability(download=True, crawl=True, ranking=False)
 
-    def __init__(self, project_path: str | Path | None = None) -> None:
-        self.project_path = (
-            Path(project_path)
-            if project_path
-            else Path(__file__).resolve().parents[2] / "vendor" / "85xo"
-        )
-        self.lib_path = self.project_path
-
     def detect(self, url: str) -> bool:
         return url.lower().startswith(("https://mixi-xxx.cc/", "http://mixi-xxx.cc/"))
 
     def download(self, request: DownloadRequest) -> DownloadResult:
-        self._ensure_path()
         try:
             output_dir = Path(request.output_dir)
             output_dir.mkdir(parents=True, exist_ok=True)
@@ -99,7 +89,6 @@ class MixixxxEngine(IDownloader):
             )
 
     def crawl(self, request: CrawlRequest) -> CrawlResult:
-        self._ensure_path()
         try:
             seed = "https://mixi-xxx.cc/"
             if request.seeds:
@@ -214,12 +203,6 @@ class MixixxxEngine(IDownloader):
                 message=f"mixixxx crawl failed: {exc}",
                 errors=["crawl_failed"],
             )
-
-    def _ensure_path(self) -> None:
-        lib = str(self.lib_path)
-        if lib not in sys.path:
-            sys.path.insert(0, lib)
-
 
 def _extend_files(
     files: list[str], lock: threading.Lock, values: list[str]

@@ -48,7 +48,7 @@ def extract_short_link(url: str) -> str | None:
     path = (parsed.path or "").strip("/")
     if not path:
         return None
-    candidate = path.split("/")[0]
+    candidate = path.rsplit("/", 1)[-1]
     return candidate if SHORT_LINK_RE.fullmatch(candidate) else None
 
 
@@ -92,6 +92,15 @@ def fetch_info(
     if status == "4" or status == "5":
         raise MvfileApiError("auth_required")
     if status in {"2", "3"}:
+        if len(short_link) > 6 and short_link.startswith("a"):
+            # Some vll landing pages prefix 6-char codes with "a" (imagedist).
+            return fetch_info(
+                short_link[1:],
+                domain=domain,
+                api_base=api_base,
+                timeout_seconds=timeout_seconds,
+                password=password,
+            )
         raise MvfileApiError("not_found")
     landing = str(net.get("landingPage") or short_link)
     is_folder = bool(net.get("isFolder"))

@@ -48,7 +48,7 @@
 
 ## `gofile`
 
-**Vendored**: `src/dler_kun/vendor/gofile/`
+**統合**: `src/dler_kun/engines/gofile/gofile_dl/`（旧 `vendor/gofile/gofile_dl` をエンジンに内包）
 
 ### 対応 URL
 
@@ -95,7 +95,7 @@
 
 ## `85xo`
 
-**Vendored**: `src/dler_kun/vendor/85xo/`
+**統合**: `src/dler_kun/engines/85xo/xo_dler/`（旧 `vendor/85xo/xo_dler` をエンジンに内包）
 
 ### 対応 URL
 
@@ -201,15 +201,10 @@ dler-kun crawl mvfile --seed https://cdn.mvfile.com/cv9NBN --download -o downloa
 
 ---
 
-## 外部プロジェクト参照（開発用）
+## コード所有
 
-ランタイムの既定は vendored コピー。以下はソース参照のみ:
+- gofile エンジン: `engines/gofile/gofile_dl/`（旧 `vendor/gofile/gofile_dl` を統合）
+- 85xo エンジン: `engines/85xo/xo_dler/`（旧 `vendor/85xo/xo_dler` を統合）
+- twimg: `vendor/twimg/download_twitter_media.py` のみ vendored（subprocess 呼び出し）
 
-| エンジン | 元プロジェクト |
-|----------|----------------|
-| twimg | twimg downloader ソース |
-| gofile | `E:\projects\gofile-downloader` |
-| 85xo | `E:\projects\85-xo` |
-| mvfile | （外部 vendor なし・API 直結） |
-
-`config.engine_paths` または `DLER_*_PATH` 環境変数で一時 override 可能。
+外部プロジェクトへのランタイム依存はありません。`config.engine_paths` は twimg のみ。

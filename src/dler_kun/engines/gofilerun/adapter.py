@@ -53,11 +53,6 @@ class GofileRunEngine(IDownloader):
     display_name = "GoFile.run Engine"
     capabilities = EngineCapability(download=True, crawl=True, ranking=False)
 
-    def __init__(self, project_path: str | Path | None = None) -> None:
-        self.project_path = (
-            Path(project_path) if project_path else Path(__file__).resolve().parent
-        )
-
     def detect(self, url: str) -> bool:
         host = (urlparse(url if "://" in url else f"https://{url}").hostname or "").lower()
         return host == "gofile.run" or host.endswith(".gofile.run")
@@ -67,6 +62,8 @@ class GofileRunEngine(IDownloader):
             api_base = str(request.options.get("api_base") or fun800_api.DEFAULT_API_BASE)
             timeout_seconds = float(request.options.get("timeout_seconds", 30.0))
             force = bool(request.options.get("force", False))
+            local_addr = str(request.options.get("local_addr") or "")
+            proxy = str(request.options.get("proxy") or "")
             password = request.options.get("password")
             targets = collect_media(
                 request.url,
@@ -108,6 +105,8 @@ class GofileRunEngine(IDownloader):
                         referer=target.entry.page_url,
                         force=force,
                         timeout_seconds=timeout_seconds,
+                        local_addr=local_addr,
+                        proxy=proxy,
                     )
                     files.append(str(path))
                 except MvfileDownloadError as exc:
@@ -190,6 +189,8 @@ class GofileRunEngine(IDownloader):
             api_base = str(request.options.get("api_base") or fun800_api.DEFAULT_API_BASE)
             timeout_seconds = float(request.options.get("timeout_seconds", 30.0))
             password = request.options.get("password")
+            local_addr = str(request.options.get("local_addr") or "")
+            proxy = str(request.options.get("proxy") or "")
             media_entries: list[MediaTarget] = []
             for seed in seeds:
                 media_entries.extend(
@@ -231,6 +232,8 @@ class GofileRunEngine(IDownloader):
                             referer=target.entry.page_url,
                             force=force,
                             timeout_seconds=timeout_seconds,
+                            local_addr=local_addr,
+                            proxy=proxy,
                         )
                         files.append(str(path))
                     except MvfileDownloadError as exc:

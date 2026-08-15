@@ -49,9 +49,6 @@ class ConfigManager:
             "user_agent": "",
             "engine_paths": {
                 "twimg": os.environ.get("DLER_TWIMG_PATH", ""),
-                "gofile": os.environ.get("DLER_GOFILE_PATH", ""),
-                "85xo": os.environ.get("DLER_85XO_PATH", ""),
-                "mvfile": os.environ.get("DLER_MVFILE_PATH", ""),
             },
             "85xo": {
                 "default_seeds": list(DEFAULT_85XO_SEEDS),

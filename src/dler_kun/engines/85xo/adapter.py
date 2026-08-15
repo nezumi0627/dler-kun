@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import sys
 from dataclasses import replace
-from pathlib import Path
 from typing import Any
 
 from ...engine import IDownloader
@@ -22,14 +20,6 @@ class Engine85xo(IDownloader):
     engine_id = "85xo"
     display_name = "85xo Engine"
     capabilities = EngineCapability(download=True, crawl=True, ranking=False)
-
-    def __init__(self, project_path: str | Path | None = None) -> None:
-        self.project_path = (
-            Path(project_path)
-            if project_path
-            else Path(__file__).resolve().parents[2] / "vendor" / "85xo"
-        )
-        self.lib_path = self.project_path
 
     def detect(self, url: str) -> bool:
         lowered = url.lower()
@@ -65,10 +55,9 @@ class Engine85xo(IDownloader):
 
     def crawl(self, request: CrawlRequest) -> CrawlResult:
         try:
-            self._ensure_path()
             if request.options.get("method", "fast") != "legacy":
                 return self._crawl_fast(request)
-            from xo_dler import CrawlConfig, DownloadConfig, crawl_once, download_items
+            from .xo_dler import CrawlConfig, DownloadConfig, crawl_once, download_items
 
             user_agent = str(request.options.get("user_agent") or "")
             seeds = resolve_85xo_seeds(
@@ -136,8 +125,7 @@ class Engine85xo(IDownloader):
             )
 
     def _crawl_fast(self, request: CrawlRequest) -> CrawlResult:
-        self._ensure_path()
-        from xo_dler import DownloadConfig
+        from .xo_dler import DownloadConfig
 
         from .fast import (
             crawl_fast,
@@ -164,7 +152,7 @@ class Engine85xo(IDownloader):
             stop_event=stop_event,
             resolve_cache=resolve_cache,
         )
-        media_items = to_existing_media_items(fast_items, self.project_path)
+        media_items = to_existing_media_items(fast_items)
         crawl_items = [self._to_crawl_item(item) for item in media_items]
         files: list[str] = []
         status = JobStatus.SUCCESS
@@ -193,6 +181,8 @@ class Engine85xo(IDownloader):
                     progress_callback=request.options.get("progress_callback"),
                     write_metadata_sidecar=bool(request.options.get("metadata", False)),
                     stop_event=stop_event,
+                    local_addr=str(request.options.get("local_addr") or ""),
+                    proxy=str(request.options.get("proxy") or ""),
                 )
             ]
             if len(files) < len(media_items):
@@ -208,11 +198,6 @@ class Engine85xo(IDownloader):
             errors=errors,
             metadata={"download": request.download, "method": "fast"},
         )
-
-    def _ensure_path(self) -> None:
-        lib = str(self.lib_path)
-        if lib not in sys.path:
-            sys.path.insert(0, lib)
 
     @staticmethod
     def _to_crawl_item(item: Any) -> CrawlItem:
@@ -232,8 +217,7 @@ class Engine85xo(IDownloader):
 
     def _download_direct(self, request: DownloadRequest) -> DownloadResult:
         try:
-            self._ensure_path()
-            from xo_dler import DownloadConfig
+            from .xo_dler import DownloadConfig
 
             from .fast import (
                 direct_media_items_from_url,
@@ -247,7 +231,7 @@ class Engine85xo(IDownloader):
                 request.url,
                 timeout_seconds=float(request.options.get("timeout_seconds", 30.0)),
             )
-            media_items = to_existing_media_items(fast_items, self.project_path)
+            media_items = to_existing_media_items(fast_items)
             if not media_items:
                 return DownloadResult(
                     job_id=request.job_id,
@@ -279,6 +263,8 @@ class Engine85xo(IDownloader):
                     progress_callback=request.options.get("progress_callback"),
                     write_metadata_sidecar=bool(request.options.get("metadata", False)),
                     stop_event=stop_event,
+                    local_addr=str(request.options.get("local_addr") or ""),
+                    proxy=str(request.options.get("proxy") or ""),
                 )
             ]
             status = (

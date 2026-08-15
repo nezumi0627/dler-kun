@@ -21,6 +21,7 @@ python -m dler_kun config          # マージ後の有効値を表示
 | `retry` | int | `2` | 失敗時の再試行回数（アプリ層） |
 | `language` | string | `"ja"` | UI 言語（将来拡張用） |
 | `proxy` | string | `""` | GoFile 等のプロキシ URL |
+| `local_addr` | string | `""` | 全エンジン共通のソース IP バインド（例: iPhone USB テザリング `172.20.10.2`） |
 | `cookie` | string | `""` | グローバル Cookie ヘッダ |
 | `user_agent` | string | `""` | 空なら各エンジン既定 UA |
 | `engine_paths` | object | 下記 | vendored パス override |
@@ -30,11 +31,8 @@ python -m dler_kun config          # マージ後の有効値を表示
 | キー | 環境変数 | 説明 |
 |------|----------|------|
 | `twimg` | `DLER_TWIMG_PATH` | twimg スクリプトディレクトリ |
-| `gofile` | `DLER_GOFILE_PATH` | gofile vendored ルート |
-| `85xo` | `DLER_85XO_PATH` | 85xo vendored ルート |
-| `mvfile` | `DLER_MVFILE_PATH` | 予約（現状未使用） |
 
-空文字 = vendored 既定パスを使用。
+gofile / 85xo / mvfile / gofilerun はエンジン内に統合済みのため engine_paths は不要。
 
 ### `85xo`
 
@@ -128,6 +126,8 @@ python -m dler_kun config          # マージ後の有効値を表示
 - 破損扱いのターゲットファイル → 削除して最初から
 
 GoFile vendored 側も `.part` ファイルで再開・破棄を管理します。
+
+mvfile / gofilerun（HLS）は `.hlsd` ステージングに取得済みセグメントを保持し、再実行時は未取得分だけ再取得してから remux します（完了済み `.mp4` はスキップ、失敗時はステージングを残して再開に備える）。
 
 ### キャッシュキー
 

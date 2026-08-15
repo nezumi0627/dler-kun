@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import io
 import re
-import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -48,17 +47,15 @@ class GoFileEngine(IDownloader):
     display_name = "GoFile Engine"
     capabilities = EngineCapability(download=True, crawl=True, ranking=True)
 
-    def __init__(self, project_path: str | Path | None = None, proxy: str = "") -> None:
-        self.project_path = (
-            Path(project_path)
-            if project_path
-            else Path(__file__).resolve().parents[2] / "vendor" / "gofile"
-        )
+    def __init__(self, proxy: str = "") -> None:
         self.proxy = proxy or None
 
     def detect(self, url: str) -> bool:
         lowered = url.lower()
-        return any(d in lowered for d in ("gofile.io", "gofile-douga.com", "gofilelab.com"))
+        return any(
+            d in lowered
+            for d in ("gofile.io", "gofile-douga.com", "gofilelab.com")
+        )
 
     def download(self, request: DownloadRequest) -> DownloadResult:
         # gofile-douga.com / gofilelab.com are listing pages (not a single file
@@ -106,14 +103,14 @@ class GoFileEngine(IDownloader):
             )
 
     async def _download_async(self, request: DownloadRequest) -> DownloadResult:
-        self._ensure_path()
         import aiohttp
-        from gofile_dl.downloader import (
-            GoFileDownloader,  # type: ignore[import-not-found]
-        )
+
+        from .gofile_dl.downloader import GoFileDownloader
 
         timeout = aiohttp.ClientTimeout(total=None)
         password = request.options.get("password")
+        local_addr = str(request.options.get("local_addr") or "")
+        proxy = str(request.options.get("proxy") or "") or self.proxy or ""
         output_dir = str(self._download_root(request))
         progress_callback = request.options.get("progress_callback")
         label = _content_label(request.url)
@@ -136,6 +133,8 @@ class GoFileEngine(IDownloader):
                     url=request.url,
                     password=password,
                     output_dir=output_dir,
+                    local_addr=local_addr,
+                    proxy=proxy,
                 )
                 # Stale guest tokens in tokens.json often return HTTP 401.
                 # Invalidate and retry once with a fresh guest account (wrapper-side).
@@ -149,6 +148,8 @@ class GoFileEngine(IDownloader):
                             password=password,
                             output_dir=output_dir,
                             token=fresh_token,
+                            local_addr=local_addr,
+                            proxy=proxy,
                         )
 
         download_result = self._download_result_from_payload(request, result)
@@ -179,8 +180,15 @@ class GoFileEngine(IDownloader):
         password: Any,
         output_dir: str,
         token: str | None = None,
+        local_addr: str = "",
+        proxy: str = "",
     ) -> dict[str, Any]:
-        downloader = downloader_cls(session, token=token, proxy=self.proxy)
+        downloader = downloader_cls(
+            session,
+            token=token,
+            proxy=proxy or self.proxy,
+            local_addr=local_addr or None,
+        )
         await downloader.init()
         return await downloader.download(
             url,
@@ -190,12 +198,7 @@ class GoFileEngine(IDownloader):
 
     async def _refresh_guest_token(self, session: Any) -> str | None:
         """Invalidate the cached guest token and mint a new one."""
-        try:
-            from gofile_dl.token.token_manager import (
-                TokenManager,  # type: ignore[import-not-found]
-            )
-        except Exception:
-            return None
+        from .gofile_dl.token.token_manager import TokenManager
 
         manager = TokenManager()
         stale = await manager.get_valid_token()
@@ -209,9 +212,7 @@ class GoFileEngine(IDownloader):
         except Exception:
             # Fall back to a one-shot guest account via the content API path.
             try:
-                from gofile_dl.downloader.go_file_api import (
-                    GoFileAPI,  # type: ignore[import-not-found]
-                )
+                from .gofile_dl.downloader.go_file_api import GoFileAPI
 
                 api = GoFileAPI(session, proxy=self.proxy)
                 return await api._create_guest_account()
@@ -286,8 +287,6 @@ class GoFileEngine(IDownloader):
             )
 
     async def _ranking_async(self, request: CrawlRequest) -> CrawlResult:
-        self._ensure_path()
-
         limit = max(1, int(request.options.get("limit", 60)))
         max_more_clicks = int(request.options.get("max_more_clicks", 5))
         user_agent = str(request.options.get("user_agent") or "")
@@ -451,16 +450,9 @@ class GoFileEngine(IDownloader):
             metadata=metadata,
         )
 
-    def _ensure_path(self) -> None:
-        project = str(self.project_path)
-        if project not in sys.path:
-            sys.path.insert(0, project)
-
     def _download_root(self, request: DownloadRequest) -> Path:
-        output_dir = request.output_dir
-        if output_dir.name.lower() == self.engine_id:
-            return output_dir
-        return output_dir / self.engine_id
+        # Per-download ID folder is applied centrally (app.download_urls).
+        return request.output_dir
 
     def _ranking_download_root(self, request: CrawlRequest) -> Path:
         output_dir = request.output_dir
@@ -497,15 +489,11 @@ def _normalize_downloaded_files(files: list[Any]) -> list[str]:
 
 @contextmanager
 def _suppress_gofile_rich_ui() -> Iterator[None]:
-    """Silence vendored Rich panels so dler-kun's progress bar stays clean."""
+    """Silence Rich panels in the integrated gofile downloader."""
     try:
-        from importlib import import_module
-
         from rich.console import Console
 
-        _ensure_gofile_vendor_on_path()
-        file_downloader = import_module("gofile_dl.downloader.file_downloader")
-        go_file_downloader = import_module("gofile_dl.downloader.go_file_downloader")
+        from .gofile_dl.downloader import file_downloader, go_file_downloader
     except Exception:
         yield
         return
@@ -523,13 +511,6 @@ def _suppress_gofile_rich_ui() -> Iterator[None]:
     finally:
         setattr(go_file_downloader, "console", originals[0])
         setattr(file_downloader, "console", originals[1])
-
-
-def _ensure_gofile_vendor_on_path() -> None:
-    vendor = Path(__file__).resolve().parents[2] / "vendor" / "gofile"
-    path = str(vendor)
-    if path not in sys.path:
-        sys.path.insert(0, path)
 
 
 async def collect_douga_urls(

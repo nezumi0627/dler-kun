@@ -312,7 +312,25 @@ def _now() -> str:
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-def _make_session(retries: int = 3, backoff: float = 0.3) -> requests.Session:
+class _SourceAddressAdapter(HTTPAdapter):
+    """Bind every connection to a local source address (e.g. USB tethering)."""
+
+    def __init__(self, source_address: str, **kwargs):
+        self._source_address = (source_address, 0)
+        super().__init__(**kwargs)
+
+    def init_poolmanager(self, *args, **kwargs):
+        kwargs["source_address"] = self._source_address
+        return super().init_poolmanager(*args, **kwargs)
+
+    def proxy_manager_for(self, *args, **kwargs):
+        kwargs["source_address"] = self._source_address
+        return super().proxy_manager_for(*args, **kwargs)
+
+
+def _make_session(
+    retries: int = 3, backoff: float = 0.3, source_address: str | None = None
+) -> requests.Session:
     session = requests.Session()
     retry = Retry(
         total=retries,
@@ -320,7 +338,14 @@ def _make_session(retries: int = 3, backoff: float = 0.3) -> requests.Session:
         status_forcelist={429, 500, 502, 503, 504},
         allowed_methods={"GET", "POST"},
     )
-    adapter = HTTPAdapter(max_retries=retry, pool_connections=64, pool_maxsize=128)
+    adapter_cls = (
+        lambda **kw: _SourceAddressAdapter(source_address, **kw)
+        if source_address
+        else HTTPAdapter(**kw)
+    )
+    adapter = adapter_cls(
+        max_retries=retry, pool_connections=64, pool_maxsize=128
+    )
     session.mount("https://", adapter)
     session.mount("http://", adapter)
     session.headers.update({"User-Agent": _USER_AGENT, "Accept": "*/*"})
@@ -1151,6 +1176,11 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "-f", "--force", action="store_true", help="Force overwrite existing files"
     )
+    p.add_argument(
+        "--local-addr",
+        metavar="IP",
+        help="Bind source IP (e.g. iPhone USB tethering 172.20.10.2)",
+    )
     p.add_argument("-v", "--verbose", action="store_true", help="Debug logging")
     p.add_argument(
         "--db-summary",
@@ -1174,6 +1204,10 @@ def main() -> None:
     args = _build_parser().parse_args()
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
+
+    if getattr(args, "local_addr", None):
+        global _SESSION
+        _SESSION = _make_session(source_address=args.local_addr)
 
     base_dir = Path(args.output_dir).resolve()
     base_dir.mkdir(parents=True, exist_ok=True)

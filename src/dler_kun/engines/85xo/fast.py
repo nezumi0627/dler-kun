@@ -379,56 +379,15 @@ def listing_page_url(seed_url: str, page_number: int) -> str:
 
 
 def parse_published_at(text: str, now: datetime) -> datetime | None:
-    try:
-        from xo_dler.dates import parse_published_at as existing_parse_published_at
+    from .xo_dler.dates import parse_published_at
 
-        return existing_parse_published_at(text, now)
-    except ModuleNotFoundError:
-        normalized = " ".join(text.split())
-        if "今天" in normalized or "今日" in normalized:
-            return now
-        if "昨天" in normalized or "昨日" in normalized:
-            return now - timedelta(days=1)
-        day_match = re.search(
-            r"(?P<days>\d+)\s*(?:天前|日前|days?\s+ago)", normalized, re.I
-        )
-        if day_match:
-            return now - timedelta(days=int(day_match.group("days")))
-        week_match = re.search(
-            r"(?P<weeks>\d+)\s*(?:星期前|週間前|weeks?\s+ago)",
-            normalized,
-            re.I,
-        )
-        if week_match:
-            return now - timedelta(weeks=int(week_match.group("weeks")))
-        month_match = re.search(
-            r"(?P<months>\d+)\s*(?:ヶ月前|か月前|个月前|months?\s+ago)",
-            normalized,
-            re.I,
-        )
-        if month_match:
-            return now - timedelta(days=int(month_match.group("months")) * 30)
-        year_match = re.search(
-            r"(?P<years>\d+)\s*(?:年前|years?\s+ago)",
-            normalized,
-            re.I,
-        )
-        if year_match:
-            return now - timedelta(days=int(year_match.group("years")) * 365)
-        return None
+    return parse_published_at(text, now)
 
 
 def is_within_days(value: datetime | None, days: int, now: datetime) -> bool:
-    try:
-        from xo_dler.dates import is_within_days as existing_is_within_days
+    from .xo_dler.dates import is_within_days
 
-        return existing_is_within_days(value, days, now)
-    except ModuleNotFoundError:
-        if value is None:
-            return False
-        if value.tzinfo is None and now.tzinfo is not None:
-            value = value.replace(tzinfo=now.tzinfo)
-        return now - timedelta(days=days) <= value <= now + timedelta(minutes=5)
+    return is_within_days(value, days, now)
 
 
 def parse_iso_datetime(value: str) -> datetime | None:
@@ -441,16 +400,8 @@ def parse_iso_datetime(value: str) -> datetime | None:
         return None
 
 
-def to_existing_media_items(items: Iterable[FastMediaItem], project_path: Path):
-    import sys
-
-    for candidate in (project_path, project_path / "lib"):
-        if (candidate / "xo_dler").exists():
-            path = str(candidate)
-            if path not in sys.path:
-                sys.path.insert(0, path)
-            break
-    from xo_dler.models import MediaItem
+def to_existing_media_items(items: Iterable[FastMediaItem]):
+    from .xo_dler.models import MediaItem
 
     return [
         MediaItem(
@@ -474,8 +425,10 @@ def download_existing_items_parallel(
     progress_callback: Callable[[dict], None] | None = None,
     write_metadata_sidecar: bool = False,
     stop_event: threading.Event | None = None,
+    local_addr: str = "",
+    proxy: str = "",
 ) -> list[Path]:
-    from xo_dler.downloader import target_path, unique_target_path, write_metadata
+    from .xo_dler.downloader import target_path, unique_target_path, write_metadata
 
     if stop_event is not None and stop_event.is_set():
         return []
@@ -584,6 +537,8 @@ def download_existing_items_parallel(
                 if progress_callback
                 else None,
                 stop_event,
+                local_addr,
+                proxy,
             ): (item, target, cache_key)
             for item, target, cache_key in tasks
         }
@@ -643,9 +598,11 @@ def download_item_robust(
     max_time_seconds: float | None = None,
     on_progress: Callable[[int, float | None], None] | None = None,
     stop_event: threading.Event | None = None,
+    local_addr: str = "",
+    proxy: str = "",
 ) -> bool:
     import requests
-    from xo_dler.downloader import download_headers
+    from .xo_dler.downloader import download_headers
 
     if stop_event is not None and stop_event.is_set():
         return False
@@ -678,6 +635,8 @@ def download_item_robust(
                     read_timeout_seconds,
                     max_time_seconds=max_time_seconds,
                     stop_event=stop_event,
+                    local_addr=local_addr,
+                    proxy=proxy,
                 )
             else:
                 with requests.get(
@@ -796,43 +755,6 @@ def direct_media_items_from_url(
     ]
 
 
-def build_curl_download_command(
-    curl_path: str,
-    url: str,
-    output_path: Path,
-    headers: dict[str, str],
-    read_timeout_seconds: float,
-    max_time_seconds: float | None = None,
-) -> list[str]:
-    # Stall detection only by default; optional --max-time for hard caps.
-    speed_time = max(10, int(read_timeout_seconds))
-    command = [
-        curl_path,
-        "--fail",
-        "--location",
-        "--silent",
-        "--show-error",
-        "--connect-timeout",
-        "10",
-        "--speed-limit",
-        "1024",
-        "--speed-time",
-        str(speed_time),
-        "--output",
-        str(output_path),
-    ]
-    # Resume only when a non-empty partial already exists. An empty `.part`
-    # plus `--continue-at -` can hang on some CDNs (Range: bytes=0-).
-    if output_path.exists() and output_path.stat().st_size > 0:
-        command[5:5] = ["--continue-at", "-"]
-    if max_time_seconds is not None and max_time_seconds > 0:
-        command.extend(["--max-time", str(int(max_time_seconds))])
-    for key, value in headers.items():
-        command.extend(["--header", f"{key}: {value}"])
-    command.append(url)
-    return command
-
-
 def download_with_curl(
     curl_path: str,
     url: str,
@@ -841,48 +763,28 @@ def download_with_curl(
     read_timeout_seconds: float,
     max_time_seconds: float | None = None,
     stop_event: threading.Event | None = None,
+    local_addr: str = "",
+    proxy: str = "",
 ) -> None:
-    command = build_curl_download_command(
-        curl_path,
-        url,
-        output_path,
-        headers,
-        read_timeout_seconds,
-        max_time_seconds=max_time_seconds,
-    )
-    # --max-time (when set) is enforced by curl itself, so no separate
-    # subprocess timeout is needed here.
-    proc = subprocess.Popen(
-        command,
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.PIPE,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-    )
-    stderr_chunks: list[str] = []
+    from ...net import CurlCancelled, curl_download
 
-    def _drain_stderr() -> None:
-        if proc.stderr:
-            stderr_chunks.append(proc.stderr.read())
-
-    drain = threading.Thread(target=_drain_stderr, daemon=True)
-    drain.start()
-    while proc.poll() is None:
-        if stop_event is not None and stop_event.is_set():
-            proc.terminate()
-            try:
-                proc.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-            raise DownloadCancelled("interrupted by user")
-        time.sleep(0.25)
-    drain.join(timeout=1.0)
-    if proc.returncode != 0:
-        raise OSError(
-            "".join(stderr_chunks).strip() or f"curl exit {proc.returncode}"
+    try:
+        curl_download(
+            url,
+            output_path,
+            curl_path=curl_path,
+            headers=headers,
+            local_addr=local_addr,
+            proxy=proxy,
+            read_timeout_seconds=read_timeout_seconds,
+            max_time_seconds=max_time_seconds,
+            # Resume only when a non-empty partial already exists. An empty
+            # `.part` plus `--continue-at -` can hang on some CDNs.
+            resume=output_path.exists() and output_path.stat().st_size > 0,
+            stop_event=stop_event,
         )
+    except CurlCancelled as exc:
+        raise DownloadCancelled("interrupted by user") from exc
 
 
 def match_group(pattern: re.Pattern[str], text: str, group: str) -> str | None:

@@ -31,10 +31,6 @@ class MvfileEngine(IDownloader):
     display_name = "mvfile Engine"
     capabilities = EngineCapability(download=True, crawl=True, ranking=False)
 
-    def __init__(self, project_path: str | Path | None = None) -> None:
-        # Reserved for temporary local overrides; mvfile has no vendored tree.
-        self.project_path = Path(project_path) if project_path else Path(__file__).resolve().parent
-
     def detect(self, url: str) -> bool:
         host = (urlparse(url if "://" in url else f"https://{url}").hostname or "").lower()
         supported = (
@@ -43,6 +39,9 @@ class MvfileEngine(IDownloader):
             "tweetfile.com",
             "gofile.website",
             "image-share.cc",
+            "tweetplay.com",
+            "imagedist.com",
+            "gofile.rocks",
         )
         if any(host == domain or host.endswith(f".{domain}") for domain in supported):
             return True
@@ -53,13 +52,16 @@ class MvfileEngine(IDownloader):
             api_base = str(request.options.get("api_base") or DEFAULT_API_BASE)
             timeout_seconds = float(request.options.get("timeout_seconds", 30.0))
             force = bool(request.options.get("force", False))
+            hls_workers = int(request.options.get("hls_workers", 8))
+            local_addr = str(request.options.get("local_addr") or "")
+            proxy = str(request.options.get("proxy") or "")
             password = request.options.get("password")
             targets = resolve_download_targets(
                 request.url,
                 api_base=api_base,
                 timeout_seconds=timeout_seconds,
                 password=str(password) if password else None,
-                related=bool(request.options.get("related")),
+                related=bool(request.options.get("related", True)),
             )
             if not targets:
                 return DownloadResult(
@@ -73,6 +75,7 @@ class MvfileEngine(IDownloader):
             output_dir.mkdir(parents=True, exist_ok=True)
             files: list[str] = []
             errors: list[str] = []
+            failed: list[dict[str, str]] = []
             progress = request.options.get("progress_callback")
             total = len(targets)
             for index, entry in enumerate(targets, start=1):
@@ -93,6 +96,9 @@ class MvfileEngine(IDownloader):
                         force=force,
                         timeout_seconds=timeout_seconds,
                         referer=entry.page_url,
+                        hls_workers=hls_workers,
+                        local_addr=local_addr,
+                        proxy=proxy,
                     )
                     files.append(str(path))
                 except MvfileDownloadError as exc:
@@ -106,9 +112,23 @@ class MvfileEngine(IDownloader):
                             errors=["dependency_missing"],
                             files=files,
                         )
-                    errors.append(message)
+                    errors.append("download_failed")
+                    failed.append(
+                        {
+                            "name": entry.name,
+                            "short_link": entry.short_link,
+                            "error": message,
+                        }
+                    )
                 except OSError as exc:
                     errors.append(str(exc))
+                    failed.append(
+                        {
+                            "name": entry.name,
+                            "short_link": entry.short_link,
+                            "error": str(exc),
+                        }
+                    )
             if callable(progress):
                 progress(
                     {
@@ -133,7 +153,7 @@ class MvfileEngine(IDownloader):
                 files=files,
                 errors=(["download_failed"] if errors else []),
                 metadata={
-                    "failed": errors[:20],
+                    "failed": failed[:20],
                     "items": [
                         {
                             "short_link": item.short_link,
@@ -221,6 +241,9 @@ class MvfileEngine(IDownloader):
                             force=force,
                             timeout_seconds=timeout_seconds,
                             referer=entry.page_url,
+                            hls_workers=int(request.options.get("hls_workers", 8)),
+                            local_addr=str(request.options.get("local_addr") or ""),
+                            proxy=str(request.options.get("proxy") or ""),
                         )
                         files.append(str(path))
                     except MvfileDownloadError as exc:
@@ -284,6 +307,9 @@ class MvfileEngine(IDownloader):
         force: bool,
         timeout_seconds: float,
         referer: str,
+        hls_workers: int = 8,
+        local_addr: str = "",
+        proxy: str = "",
     ) -> Path:
         if not entry.media_url:
             raise MvfileDownloadError("media url missing")
@@ -294,6 +320,9 @@ class MvfileEngine(IDownloader):
             referer=referer,
             force=force,
             timeout_seconds=timeout_seconds,
+            hls_workers=hls_workers,
+            local_addr=local_addr,
+            proxy=proxy,
         )
 
     @staticmethod
