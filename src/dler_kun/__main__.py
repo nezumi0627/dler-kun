@@ -84,6 +84,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Download multiple URLs concurrently (default: auto, up to 4; 1 = sequential)",
     )
+    download.add_argument(
+        "--god",
+        action="store_true",
+        help="Maximize performance: parallel URLs, HLS workers, and segment concurrency",
+    )
 
     crawl = sub.add_parser(
         "crawl", help="Crawl an engine and optionally download", parents=[common, engine_opts]
@@ -210,8 +215,10 @@ def _dispatch(
     if args.command == "download":
         options = _options_from_args(
             args,
-            {"force", "verbose", "parallel", "seg_workers", "segment_concurrency", "quality", "password", "metadata", "hls_workers", "parallel_urls", "local_addr", "proxy", "user_agent", "cookie", "api_base", "timeout_seconds"},
+            {"force", "verbose", "parallel", "seg_workers", "segment_concurrency", "quality", "password", "metadata", "hls_workers", "parallel_urls", "local_addr", "proxy", "user_agent", "cookie", "api_base", "timeout_seconds", "god"},
         )
+        if getattr(args, "god", False):
+            options["god"] = True
         if getattr(args, "single", False):
             options["related"] = False
         return print_download_results(

@@ -122,6 +122,17 @@ class DlerKunApp:
                 (options or {}).get("proxy") or self.config.get("proxy", "") or ""
             ),
         }
+        if (options or {}).get("god"):
+            base_options["god"] = True
+            base_options["parallel_urls"] = max(
+                int(base_options.get("parallel_urls") or 0), len(urls)
+            )
+            base_options["hls_workers"] = max(
+                int(base_options.get("hls_workers") or 0), 15
+            )
+            base_options["segment_concurrency"] = max(
+                int(base_options.get("segment_concurrency") or 0), 8
+            )
         parallel = int((options or {}).get("parallel_urls", 0))
         if parallel <= 0:
             parallel = min(len(urls), AUTO_PARALLEL_URLS)
