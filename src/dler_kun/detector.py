@@ -8,11 +8,14 @@ from urllib.parse import urlparse
 class DetectionRule:
     engine_id: str
     domains: tuple[str, ...]
+    exact: bool = False
 
     def matches(self, url: str) -> bool:
         host = _normalized_host(url)
         if not host:
             return False
+        if self.exact:
+            return host in self.domains
         return any(
             host == domain or host.endswith(f".{domain}") for domain in self.domains
         )
@@ -30,13 +33,6 @@ class ServiceDetector:
             DetectionRule("gofilerun", ("gofile.run",)),
             DetectionRule("85xo", ("85xo.com", "85po.net", "85po.com")),
             DetectionRule(
-                "twimg",
-                (
-                    "twimg-media.com",
-                    "cdn1.twimg-media.com",
-                ),
-            ),
-            DetectionRule(
                 "mvfile",
                 (
                     "mvfile.com",
@@ -47,7 +43,23 @@ class ServiceDetector:
                     "tweetplay.com",
                     "imagedist.com",
                     "gofile.rocks",
+                    "gofile.host",
+                    "gofile.guru",
+                    "mediasplayer.com",
+                    "twimg-media.com",
+                    "media-twimg.com",
+                    "twimg.jp",
                 ),
+            ),
+            DetectionRule(
+                "twimg",
+                (
+                    "twimg-media.com",
+                    "cdn1.twimg-media.com",
+                    "tweetfile.com",
+                    "twimg.jp",
+                ),
+                exact=True,
             ),
             DetectionRule("videy", ("video.twimg.news", "videy.co")),
             DetectionRule("mixixxx", ("mixi-xxx.cc",)),

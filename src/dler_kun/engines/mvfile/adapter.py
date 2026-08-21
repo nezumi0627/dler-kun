@@ -44,6 +44,12 @@ class MvfileEngine(IDownloader):
             "tweetplay.com",
             "imagedist.com",
             "gofile.rocks",
+            "gofile.host",
+            "gofile.guru",
+            "mediasplayer.com",
+            "twimg-media.com",
+            "media-twimg.com",
+            "twimg.jp",
         )
         if any(host == domain or host.endswith(f".{domain}") for domain in supported):
             return True

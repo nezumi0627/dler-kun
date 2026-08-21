@@ -37,7 +37,12 @@ class TwimgEngine(IDownloader):
         lowered = url.lower()
         return any(
             domain in lowered
-            for domain in ("tweetfile.com", "twimg-media.com", "cdn1.twimg-media.com")
+            for domain in (
+                "tweetfile.com",
+                "twimg-media.com",
+                "cdn1.twimg-media.com",
+                "twimg.jp",
+            )
         )
 
     def download(self, request: DownloadRequest) -> DownloadResult:
