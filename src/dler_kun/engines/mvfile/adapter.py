@@ -54,6 +54,7 @@ class MvfileEngine(IDownloader):
             "video.twimg.jp",
             "video.twimg-image.com",
             "video.twimg1.com",
+            "cdn.twimg1.com",
         )
         if any(host == domain or host.endswith(f".{domain}") for domain in supported):
             return True

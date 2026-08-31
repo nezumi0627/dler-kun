@@ -53,6 +53,7 @@ class ServiceDetector:
                     "video.twimg.jp",
                     "video.twimg-image.com",
                     "video.twimg1.com",
+                    "cdn.twimg1.com",
                 ),
             ),
             DetectionRule(
