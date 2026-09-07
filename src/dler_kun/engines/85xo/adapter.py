@@ -80,6 +80,9 @@ class Engine85xo(IDownloader):
             if user_agent:
                 crawl_config = replace(crawl_config, user_agent=user_agent)
             media_items = crawl_once(crawl_config)
+            limit = int(request.options.get("limit") or 0)
+            if limit > 0:
+                media_items = media_items[:limit]
             crawl_items = [self._to_crawl_item(item) for item in media_items]
             files: list[str] = []
             status = JobStatus.SUCCESS
@@ -152,6 +155,9 @@ class Engine85xo(IDownloader):
             resolve_cache=resolve_cache,
         )
         media_items = to_existing_media_items(fast_items)
+        limit = int(request.options.get("limit") or 0)
+        if limit > 0:
+            media_items = media_items[:limit]
         crawl_items = [self._to_crawl_item(item) for item in media_items]
         files: list[str] = []
         status = JobStatus.SUCCESS
