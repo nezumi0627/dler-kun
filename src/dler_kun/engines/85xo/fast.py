@@ -14,7 +14,6 @@ from html import unescape
 from pathlib import Path
 from typing import Any
 from urllib.parse import urljoin, urlparse
-from urllib.request import Request, urlopen
 
 from ...managers import DownloadCacheManager
 from ...models import CacheStatus
@@ -349,9 +348,15 @@ def parse_video_published_at(html: str) -> datetime | None:
 
 
 def fetch_html(url: str, timeout_seconds: float) -> str:
-    request = Request(url, headers={"User-Agent": USER_AGENT})
-    with urlopen(request, timeout=timeout_seconds) as response:
-        return response.read().decode("utf-8", "replace")
+    from ...net import fetch_text
+
+    host = urlparse(url).hostname
+    return fetch_text(
+        url,
+        headers={"User-Agent": USER_AGENT},
+        doh_host=host,
+        timeout_seconds=timeout_seconds,
+    )
 
 
 def extract_listing_date_text(card: str) -> str:
@@ -428,7 +433,7 @@ def download_existing_items_parallel(
     local_addr: str = "",
     proxy: str = "",
 ) -> list[Path]:
-    from .xo_dler.downloader import target_path, unique_target_path, write_metadata
+    from .xo_dler.downloader import target_path, write_metadata
 
     if stop_event is not None and stop_event.is_set():
         return []
@@ -438,11 +443,41 @@ def download_existing_items_parallel(
     cache = cache_manager
     downloaded: list[Path] = []
     tasks = []
+    reserved_targets: set[Path] = set()
     start_time = time.monotonic()
     progress_lock = threading.Lock()
     completed = 0
     total = len(items)
     byte_progress: dict[Path, tuple[int, float | None]] = {}
+
+    def reserve_target(base_target: Path) -> Path:
+        """Reserve a filename uniquely within this batch.
+
+        Existing files are intentionally allowed here so they can be matched
+        and skipped/resumed below. Only another item in this batch forces a
+        numeric suffix.
+        """
+        candidate = base_target
+        counter = 2
+        while candidate in reserved_targets:
+            candidate = base_target.with_name(
+                f"{base_target.stem}-{counter}{base_target.suffix}"
+            )
+            counter += 1
+        reserved_targets.add(candidate)
+        return candidate
+
+    def reserve_new_target(base_target: Path) -> Path:
+        """Reserve a path that does not overwrite an existing completed file."""
+        candidate = base_target
+        counter = 2
+        while candidate in reserved_targets or candidate.exists():
+            candidate = base_target.with_name(
+                f"{base_target.stem}-{counter}{base_target.suffix}"
+            )
+            counter += 1
+        reserved_targets.add(candidate)
+        return candidate
 
     def emit_progress(current_file: str = "") -> None:
         if not progress_callback:
@@ -488,15 +523,21 @@ def download_existing_items_parallel(
         emit_progress(str(target))
 
     for item in items:
-        target = target_path(config.output_dir, item)
+        base_target = target_path(config.output_dir, item)
+        target = reserve_target(base_target)
         cache_key = cache_key_for_url(item.url)
         metadata_path = target.with_suffix(target.suffix + ".json")
         is_cached_complete = bool(cache and cache.is_complete(cache_key))
         is_sidecar_complete = write_metadata_sidecar and (
             target.exists() and metadata_path.exists() and target.stat().st_size > 0
         )
-        if config.skip_existing and (is_cached_complete or is_sidecar_complete):
+        is_existing_complete = target.exists() and target.stat().st_size > 0
+        if config.skip_existing and (
+            is_cached_complete or is_sidecar_complete or is_existing_complete
+        ):
             print(f"[skip] exists: {target}")
+            if write_metadata_sidecar and not metadata_path.exists():
+                write_metadata(target, item)
             if cache:
                 cache.mark(cache_key, item.url, target, CacheStatus.COMPLETE, "85xo")
             downloaded.append(target)
@@ -504,17 +545,24 @@ def download_existing_items_parallel(
             continue
         part_path = target.with_suffix(target.suffix + ".part")
         if target.exists():
-            target.unlink(missing_ok=True)
-            if cache:
-                cache.mark(cache_key, item.url, target, CacheStatus.CORRUPT, "85xo")
+            if target.stat().st_size <= 0:
+                target.unlink(missing_ok=True)
+                if cache:
+                    cache.mark(
+                        cache_key, item.url, target, CacheStatus.CORRUPT, "85xo"
+                    )
+            else:
+                # skip_existing=False means keep the completed file and write
+                # the new download under the next available filename.
+                reserved_targets.discard(target)
+                target = reserve_new_target(base_target)
+                part_path = target.with_suffix(target.suffix + ".part")
         elif part_path.exists() and not should_keep_partial_after_failure(
             part_path, bool(curl_path)
         ):
             part_path.unlink(missing_ok=True)
             if cache:
                 cache.mark(cache_key, item.url, part_path, CacheStatus.CORRUPT, "85xo")
-        if target.exists():
-            target = unique_target_path(target)
         tasks.append((item, target, cache_key))
     emit_progress()
 
@@ -657,9 +705,10 @@ def download_item_robust(
                                 file.write(chunk)
             if not part_path.exists() or part_path.stat().st_size <= 0:
                 raise OSError("empty download")
+            final_size = part_path.stat().st_size
             part_path.replace(target)
             if on_progress:
-                on_progress(int(total_bytes or part_path.stat().st_size), total_bytes)
+                on_progress(int(total_bytes or final_size), total_bytes)
             print(f"[done] {target}")
             return True
         except DownloadCancelled:
@@ -777,6 +826,7 @@ def download_with_curl(
             headers=headers,
             local_addr=local_addr,
             proxy=proxy,
+            doh_host=urlparse(url).hostname,
             read_timeout_seconds=read_timeout_seconds,
             max_time_seconds=max_time_seconds,
             # Resume only when a non-empty partial already exists. An empty
