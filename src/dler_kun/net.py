@@ -28,6 +28,8 @@ USER_AGENT = (
 # returns a poisoned/non-TLS endpoint.
 FALLBACK_IPS: dict[str, tuple[str, ...]] = {
     "vid.fun800.click": ("104.21.27.12", "172.67.140.77"),
+    "85xo.com": ("104.21.28.222", "172.67.147.188"),
+    "www.85xo.com": ("104.21.28.222", "172.67.147.188"),
 }
 
 _DOH_ENDPOINTS = (
@@ -64,22 +66,22 @@ def build_curl_command(
     read_timeout_seconds: float = 30.0,
     max_time_seconds: float | None = None,
     resume: bool = False,
+    speed_limit_bytes_per_sec: int | None = 1024,
 ) -> list[str]:
     curl = curl_path or find_curl()
     speed_time = max(10, int(read_timeout_seconds))
     command = [curl, "--fail", "--location", "--silent", "--show-error"]
     if resume:
         command += ["--continue-at", "-"]
-    command += [
-        "--connect-timeout",
-        str(max(1, int(connect_timeout_seconds))),
-        "--speed-limit",
-        "1024",
-        "--speed-time",
-        str(speed_time),
-        "--output",
-        str(output_path),
-    ]
+    command += ["--connect-timeout", str(max(1, int(connect_timeout_seconds)))]
+    if speed_limit_bytes_per_sec and speed_limit_bytes_per_sec > 0:
+        command += [
+            "--speed-limit",
+            str(int(speed_limit_bytes_per_sec)),
+            "--speed-time",
+            str(speed_time),
+        ]
+    command += ["--output", str(output_path)]
     if max_time_seconds is not None and max_time_seconds > 0:
         command += ["--max-time", str(int(max_time_seconds))]
     if local_addr:
@@ -108,6 +110,7 @@ def curl_download(
     max_time_seconds: float | None = None,
     resume: bool = False,
     stop_event: threading.Event | None = None,
+    speed_limit_bytes_per_sec: int | None = 1024,
 ) -> None:
     """Download ``url`` to ``output_path``; raise :class:`CurlDownloadError` on failure."""
     command = build_curl_command(
@@ -122,6 +125,7 @@ def curl_download(
         read_timeout_seconds=read_timeout_seconds,
         max_time_seconds=max_time_seconds,
         resume=resume,
+        speed_limit_bytes_per_sec=speed_limit_bytes_per_sec,
     )
     proc = subprocess.Popen(
         command,
@@ -163,6 +167,7 @@ def fetch_text(
     headers: dict[str, str] | None = None,
     local_addr: str = "",
     proxy: str = "",
+    doh_host: str | None = None,
     timeout_seconds: float = 30.0,
 ) -> str:
     """Fetch ``url`` and return the response body as text (for page scraping)."""
@@ -172,6 +177,8 @@ def fetch_text(
         command += ["--interface", local_addr]
     if proxy:
         command += ["--proxy", proxy]
+    if doh_host:
+        command += curl_resolve_args(doh_host)
     for key, value in (headers or {}).items():
         command += ["--header", f"{key}: {value}"]
     command += ["--", url]
