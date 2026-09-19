@@ -9,6 +9,7 @@ from urllib.request import Request, urlopen
 
 DEFAULT_API_BASE = "https://rwzugqnp.fun800.click/app-api"
 DEFAULT_PAGE_HOST = "cdn.mvfile.com"
+GOFILE_BAR_API = "https://gofile.bar/api.php"
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
     "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -31,6 +32,7 @@ class MvfileEntry:
     guid: str | None = None
     channel_link: str | None = None
     children_count: int | None = None
+    relative_dir: tuple[str, ...] = ()
     raw: dict[str, Any] | None = None
 
 
@@ -59,6 +61,8 @@ def page_domain_from_url(url: str, fallback: str = DEFAULT_PAGE_HOST) -> str:
 
 
 def page_url_for(short_link: str, domain: str = DEFAULT_PAGE_HOST) -> str:
+    if domain.lower() == "gofile.bar":
+        return f"https://{domain}/d/{short_link.lstrip('/d/')}"
     return f"https://{domain}/{short_link}"
 
 
@@ -102,7 +106,8 @@ def fetch_info(
                 password=password,
             )
         raise MvfileApiError("not_found")
-    landing = str(net.get("landingPage") or short_link)
+    landing = str(net.get("shortLink") or net.get("landingPage") or short_link)
+    landing = extract_short_link(landing) or short_link
     is_folder = bool(net.get("isFolder"))
     media_url = _first_str(net.get("originUrl"), net.get("fileUrl"))
     return MvfileEntry(
@@ -154,19 +159,22 @@ def list_entries(
         if not items:
             break
         for item in items:
-            landing = str(item.get("landingPage") or "").strip()
+            net = item.get("netDiskInfo") or item
+            landing = str(net.get("shortLink") or net.get("landingPage") or "")
+            landing = extract_short_link(landing) or ""
             if not landing:
                 continue
             results.append(
                 MvfileEntry(
                     short_link=landing,
-                    name=str(item.get("name") or landing),
-                    is_folder=bool(item.get("isFolder")),
+                    name=str(net.get("name") or landing),
+                    is_folder=bool(net.get("isFolder")),
                     page_url=page_url_for(landing, domain),
-                    file_size=_optional_int(item.get("fileSize")),
-                    duration=_optional_str(item.get("length")),
-                    thumbnail_url=_optional_str(item.get("coverImage")),
-                    children_count=_optional_int(item.get("childrenFileNum")),
+                    file_size=_optional_int(net.get("fileSize")),
+                    duration=_optional_str(net.get("length")),
+                    thumbnail_url=_optional_str(net.get("coverImage")),
+                    children_count=_optional_int(net.get("childrenFileNum")),
+                    media_url=_first_str(net.get("originUrl"), net.get("fileUrl")),
                     raw=item if isinstance(item, dict) else None,
                 )
             )
@@ -195,29 +203,55 @@ def resolve_download_targets(
         timeout_seconds=timeout_seconds,
         password=password,
     )
-    if root.is_folder:
-        listing = root.short_link
-    elif related and root.channel_link:
-        listing = root.channel_link
-    else:
+    if not root.is_folder and not related:
         return [root]
-    listed = list_entries(
-        listing,
-        domain=domain,
-        api_base=api_base,
-        timeout_seconds=timeout_seconds,
-    )
+    if root.is_folder:
+        queue: list[tuple[MvfileEntry, tuple[str, ...]]] = [(root, ())]
+    else:
+        channel = root
+        if root.channel_link and root.channel_link != root.short_link:
+            channel = fetch_info(
+                root.channel_link,
+                domain=domain,
+                api_base=api_base,
+                timeout_seconds=timeout_seconds,
+            )
+        if channel.is_folder:
+            queue = [(channel, ())]
+        else:
+            queue = [(entry, ()) for entry in list_entries(
+                channel.short_link,
+                domain=domain,
+                api_base=api_base,
+                timeout_seconds=timeout_seconds,
+            )]
     targets: list[MvfileEntry] = []
-    for item in listed:
-        if item.is_folder:
+    seen: set[str] = set()
+    while queue:
+        node, relative_dir = queue.pop(0)
+        if node.short_link in seen:
             continue
-        detail = fetch_info(
-            item.short_link,
+        seen.add(node.short_link)
+        if node.is_folder:
+            child_dir = relative_dir + (_safe_folder_name(node.name),)
+            for child in list_entries(
+                node.short_link,
+                domain=domain,
+                api_base=api_base,
+                timeout_seconds=timeout_seconds,
+            ):
+                queue.append((child, child_dir))
+            continue
+        detail = node if node.media_url else fetch_info(
+            node.short_link,
             domain=domain,
             api_base=api_base,
             timeout_seconds=timeout_seconds,
         )
-        targets.append(detail)
+        if detail.media_url:
+            targets.append(
+                MvfileEntry(**{**detail.__dict__, "relative_dir": relative_dir})
+            )
     return _dedupe_by_short_link(targets)
 
 
@@ -230,8 +264,25 @@ def _api_get(
 ) -> dict[str, Any]:
     from urllib.parse import urlencode
 
-    query = urlencode({k: v for k, v in params.items() if v is not None and v != ""})
-    url = f"{endpoint}?{query}" if query else endpoint
+    domain = str(params.get("domain") or urlparse(referer).hostname or "").lower()
+    endpoint_url = urlparse(endpoint)
+    if domain == "gofile.bar":
+        api_base = GOFILE_BAR_API
+        endpoint_path = endpoint_url.path
+        if endpoint_path.startswith("/app-api/"):
+            endpoint_path = endpoint_path[len("/app-api") :]
+    else:
+        api_base = f"{endpoint_url.scheme}://{endpoint_url.netloc}"
+        endpoint_path = endpoint_url.path
+    if api_base.rstrip("/").endswith("api.php"):
+        query_params = {"endpoint": endpoint_path, **params}
+        query = urlencode(
+            {k: v for k, v in query_params.items() if v is not None and v != ""}
+        )
+        url = f"{api_base}?{query}"
+    else:
+        query = urlencode({k: v for k, v in params.items() if v is not None and v != ""})
+        url = f"{endpoint}?{query}" if query else endpoint
     request = Request(
         url,
         headers={
@@ -293,3 +344,8 @@ def _first_str(*values: Any) -> str | None:
         if text:
             return text
     return None
+
+
+def _safe_folder_name(value: str) -> str:
+    cleaned = re.sub(r'[<>:"/\\|?*\x00-\x1f]+', "_", value).strip(" ._")
+    return (cleaned[:160] or "folder")

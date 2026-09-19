@@ -54,6 +54,13 @@ class ServiceDetector:
                     "video.twimg-image.com",
                     "video.twimg1.com",
                     "cdn.twimg1.com",
+                    "twimg1.com",
+                    "twimg-album.com",
+                    "file-bio.com",
+                    "twfiles.com",
+                    "gofile.video",
+                    "gofile.trade",
+                    "gofile.bar",
                 ),
             ),
             DetectionRule(
@@ -68,6 +75,7 @@ class ServiceDetector:
             ),
             DetectionRule("videy", ("video.twimg.news", "videy.co")),
             DetectionRule("mixixxx", ("mixi-xxx.cc",)),
+            DetectionRule("linkex", ("l2e.click",)),
         ]
 
     def detect(self, url: str) -> str | None:
