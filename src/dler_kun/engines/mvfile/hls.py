@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 import shutil
 import subprocess
+import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
@@ -18,13 +19,21 @@ class MvfileDownloadError(RuntimeError):
 
 
 def sanitize_filename(value: str) -> str:
-    cleaned = re.sub(r'[<>:"/\\|?*\x00-\x1f]+', "_", value).strip(" ._")
+    # MSYS2 curl silently fails when its output path contains parentheses.
+    cleaned = re.sub(r'[<>:"/\\|?*()]+' r'|[\x00-\x1f]+', "_", value).strip(" ._")
     return (cleaned[:160] or "video")
 
 
 def target_mp4_path(output_dir: Path, name: str) -> Path:
-    stem = Path(sanitize_filename(name)).stem
-    return output_dir / f"{stem}.mp4"
+    safe_name = sanitize_filename(name)
+    path = Path(safe_name)
+    if path.suffix.lower() == ".mp4":
+        filename = f"{path.stem}.mp4"
+    else:
+        # Preserve the source extension in the basename so similarly named
+        # MOV/MP4 entries do not overwrite one another after remuxing.
+        filename = f"{safe_name}.mp4"
+    return output_dir / filename
 
 
 def download_hls_to_mp4(
@@ -189,7 +198,9 @@ def materialize_playlist(
             proxy=proxy,
         )
 
-    with ThreadPoolExecutor(max_workers=workers) as pool:
+    # The CDN starts returning empty 0-byte responses when too many segment
+    # requests arrive at once. Keep the caller's tuning, but cap the burst.
+    with ThreadPoolExecutor(max_workers=max(1, min(workers, 4))) as pool:
         list(pool.map(fetch, segments))
 
     out = work_dir / "local.m3u8"
@@ -214,23 +225,42 @@ def _curl_download(
     local_addr: str = "",
     proxy: str = "",
 ) -> None:
-    try:
-        curl_download(
-            url,
-            output_path,
-            curl_path=curl_path,
-            headers={
-                "User-Agent": USER_AGENT,
-                "Referer": referer,
-                "Origin": _origin_from_referer(referer),
-            },
-            local_addr=local_addr,
-            proxy=proxy,
-            # Prefer DoH-resolved IP to bypass poisoned local DNS for vid CDN.
-            doh_host=urlparse(url).hostname or None,
-            connect_timeout_seconds=max(5, int(timeout_seconds // 3) or 5),
-            read_timeout_seconds=timeout_seconds,
-            max_time_seconds=max(30, int(timeout_seconds * 20)),
-        )
-    except CurlDownloadError as exc:
-        raise MvfileDownloadError(str(exc)) from exc
+    headers = {
+        "User-Agent": USER_AGENT,
+        "Referer": referer,
+        "Origin": _origin_from_referer(referer),
+    }
+    last_error = ""
+    for attempt in range(1, 4):
+        try:
+            curl_download(
+                url,
+                output_path,
+                curl_path=curl_path,
+                headers=headers,
+                local_addr=local_addr,
+                proxy=proxy,
+                # Prefer DoH-resolved IP to bypass poisoned local DNS for vid CDN.
+                # Retry once without the cached DoH address; a single
+                # Cloudflare anycast IP can temporarily rate-limit segments.
+                doh_host=(
+                    urlparse(url).hostname or None
+                    if attempt != 2
+                    else None
+                ),
+                connect_timeout_seconds=max(5, int(timeout_seconds // 3) or 5),
+                read_timeout_seconds=timeout_seconds,
+                max_time_seconds=max(30, int(timeout_seconds * 20)),
+                # HLS playlists are tiny control files; the shared 1 KiB/s
+                # stall guard would incorrectly abort them as empty.
+                speed_limit_bytes_per_sec=0,
+            )
+            return
+        except CurlDownloadError as exc:
+            last_error = str(exc)
+            if " 404" in last_error or "error: 404" in last_error:
+                break
+            if attempt < 3:
+                time.sleep(2 ** attempt)
+    detail = last_error or "curl download failed"
+    raise MvfileDownloadError(f"{detail} [{url}]")
