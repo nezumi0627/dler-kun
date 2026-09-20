@@ -46,6 +46,8 @@ def test_hls_curl_command_disables_small_playlist_stall_guard() -> None:
     )
 
     assert "--speed-limit" not in command
+
+
 def test_direct_media_url_does_not_enter_hls_pipeline(monkeypatch, tmp_path) -> None:
     from dler_kun.engines.mvfile import hls
 
