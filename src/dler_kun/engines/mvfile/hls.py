@@ -49,9 +49,6 @@ def download_hls_to_mp4(
 ) -> Path:
     if not media_url:
         raise MvfileDownloadError("media url missing")
-    ffmpeg = shutil.which("ffmpeg")
-    if not ffmpeg:
-        raise MvfileDownloadError("dependency_missing: ffmpeg")
     curl = shutil.which("curl") or shutil.which("curl.exe")
     if not curl:
         raise MvfileDownloadError("dependency_missing: curl")
@@ -59,6 +56,27 @@ def download_hls_to_mp4(
     target.parent.mkdir(parents=True, exist_ok=True)
     if target.exists() and target.stat().st_size > 0 and not force:
         return target
+
+    # Some mvfile-family APIs return a signed object-store URL for a regular
+    # media file rather than an HLS playlist.  Treat it as a direct download;
+    # trying to parse the binary MP4 as m3u8 eventually feeds NUL bytes to
+    # curl/ffmpeg and fails with ``embedded null character`` on Windows.
+    media_path = urlparse(media_url).path.lower()
+    if media_path.endswith((".mp4", ".mov", ".m4v", ".webm", ".mkv")):
+        _curl_download(
+            curl,
+            media_url,
+            target,
+            referer=referer,
+            timeout_seconds=timeout_seconds,
+            local_addr=local_addr,
+            proxy=proxy,
+        )
+        return target
+
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        raise MvfileDownloadError("dependency_missing: ffmpeg")
 
     part = target.with_suffix(target.suffix + ".part.mp4")
     # Persistent segment staging so interrupted downloads resume from saved

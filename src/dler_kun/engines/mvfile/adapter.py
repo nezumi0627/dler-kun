@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -55,6 +56,13 @@ class MvfileEngine(IDownloader):
             "video.twimg-image.com",
             "video.twimg1.com",
             "cdn.twimg1.com",
+            "twimg1.com",
+            "twimg-album.com",
+            "file-bio.com",
+            "twfiles.com",
+            "gofile.video",
+            "gofile.trade",
+            "gofile.bar",
         )
         if any(host == domain or host.endswith(f".{domain}") for domain in supported):
             return True
@@ -91,6 +99,7 @@ class MvfileEngine(IDownloader):
             errors: list[str] = []
             failed: list[dict[str, str]] = []
             skipped_failed = 0
+            duplicate_names = Counter(entry.name for entry in targets)
             progress = request.options.get("progress_callback")
             total = len(targets)
             for index, entry in enumerate(targets, start=1):
@@ -115,9 +124,15 @@ class MvfileEngine(IDownloader):
                         force=force,
                         timeout_seconds=timeout_seconds,
                         referer=entry.page_url,
+                        relative_dir=entry.relative_dir,
                         hls_workers=hls_workers,
                         local_addr=local_addr,
                         proxy=proxy,
+                        name_suffix=(
+                            entry.short_link
+                            if duplicate_names[entry.name] > 1
+                            else ""
+                        ),
                     )
                     files.append(str(path))
                     if cache:
@@ -352,13 +367,16 @@ class MvfileEngine(IDownloader):
         force: bool,
         timeout_seconds: float,
         referer: str,
+        relative_dir: tuple[str, ...] = (),
         hls_workers: int = 8,
         local_addr: str = "",
         proxy: str = "",
+        name_suffix: str = "",
     ) -> Path:
         if not entry.media_url:
             raise MvfileDownloadError("media url missing")
-        target = target_mp4_path(output_dir, entry.name)
+        filename = f"{entry.name} [{name_suffix}]" if name_suffix else entry.name
+        target = target_mp4_path(output_dir.joinpath(*relative_dir), filename)
         return download_hls_to_mp4(
             entry.media_url,
             target,

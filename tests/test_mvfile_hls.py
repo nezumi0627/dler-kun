@@ -46,3 +46,25 @@ def test_hls_curl_command_disables_small_playlist_stall_guard() -> None:
     )
 
     assert "--speed-limit" not in command
+
+
+def test_direct_media_url_does_not_enter_hls_pipeline(monkeypatch, tmp_path) -> None:
+    from dler_kun.engines.mvfile import hls
+
+    calls = []
+
+    monkeypatch.setattr(hls.shutil, "which", lambda name: "curl.exe" if name == "curl" else None)
+    monkeypatch.setattr(
+        hls,
+        "_curl_download",
+        lambda curl, url, output, **kwargs: calls.append((curl, url, output)),
+    )
+
+    target = hls.download_hls_to_mp4(
+        "https://cdn.example/video.mp4?signature=abc",
+        tmp_path / "video.mp4",
+        referer="https://gofile.bar/d/abc123",
+    )
+
+    assert target.name == "video.mp4"
+    assert len(calls) == 1
