@@ -104,6 +104,11 @@ def build_parser() -> argparse.ArgumentParser:
     crawl.add_argument(
         "--download", action="store_true", help="Download discovered media"
     )
+    crawl.add_argument(
+        "--god",
+        action="store_true",
+        help="Maximize crawl/download performance",
+    )
     crawl.add_argument("--max-pages", type=int)
     crawl.add_argument("--max-depth", type=int)
     crawl.add_argument("--delay-seconds", type=float)
@@ -255,8 +260,11 @@ def _dispatch(
                 "cookie",
                 "api_base",
                 "timeout_seconds",
+                "god",
             },
         )
+        if getattr(args, "god", False):
+            options["god"] = True
         if args.source:
             options["sources"] = list(args.source)
         return print_job_result(

@@ -97,6 +97,7 @@ python -m dler_kun crawl {85xo|gofile} [options]
 | `--seed` | シード URL（複数指定可、`action=append`） |
 | `-o`, `--output-dir` | 出力先 |
 | `--download` | 収集したメディアをダウンロード |
+| `--god` | クロールとダウンロードの並列度を引き上げる |
 
 ### 85xo 専用
 

@@ -14,6 +14,7 @@ from .engines.engine_85xo import Engine85xo, resolve_85xo_seeds
 from .engines.gofile import GoFileEngine
 from .engines.gofile.seeds import resolve_gofile_ranking_seeds
 from .engines.gofilerun import GofileRunEngine
+from .engines.linkex import LinkexEngine
 from .engines.mixixxx import MixixxxEngine
 from .engines.mvfile import MvfileEngine
 from .engines.twimg import TwimgEngine
@@ -82,6 +83,7 @@ class DlerKunApp:
         self.factory.register(GofileRunEngine())
         self.factory.register(VideyEngine())
         self.factory.register(MixixxxEngine())
+        self.factory.register(LinkexEngine())
 
     def sites(self) -> dict[str, list[str]]:
         return self.detector.supported_domains()
@@ -243,6 +245,27 @@ class DlerKunApp:
         engine = self.factory.get(service)
         output = Path(output_dir or self.config.get("output_dir", "downloads"))
         options = dict(options or {})
+        if options.get("god"):
+            if service == "85xo":
+                options["discover_workers"] = max(
+                    int(options.get("discover_workers") or 0), 12
+                )
+                options["resolve_workers"] = max(
+                    int(options.get("resolve_workers") or 0), 12
+                )
+                options["parallel_downloads"] = max(
+                    int(options.get("parallel_downloads") or 0), 8
+                )
+            else:
+                options["parallel_downloads"] = max(
+                    int(options.get("parallel_downloads") or 0), 8
+                )
+                options["segment_concurrency"] = max(
+                    int(options.get("segment_concurrency") or 0), 8
+                )
+                options["hls_workers"] = max(
+                    int(options.get("hls_workers") or 0), 15
+                )
         if not engine:
             return {
                 "service": service,

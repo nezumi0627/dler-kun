@@ -103,10 +103,20 @@ def unique_target_path(target: Path) -> Path:
     base_stem = target.stem
     suffix = target.suffix
     counter = 2
-    while target.exists():
+    while _casefold_path_exists(target):
         target = target.with_name(f"{base_stem}-{counter}{suffix}")
         counter += 1
     return target
+
+
+def _casefold_path_exists(target: Path) -> bool:
+    if target.exists():
+        return True
+    try:
+        key = target.name.casefold()
+        return any(child.name.casefold() == key for child in target.parent.iterdir())
+    except OSError:
+        return False
 
 
 def write_metadata(target: Path, item: MediaItem) -> None:

@@ -30,6 +30,7 @@ FALLBACK_IPS: dict[str, tuple[str, ...]] = {
     "vid.fun800.click": ("104.21.27.12", "172.67.140.77"),
     "85xo.com": ("104.21.28.222", "172.67.147.188"),
     "www.85xo.com": ("104.21.28.222", "172.67.147.188"),
+    "www.85po.net": ("172.67.197.42", "104.21.76.154"),
 }
 
 _DOH_ENDPOINTS = (
@@ -199,6 +200,11 @@ def fetch_text(
 def resolve_ipv4(host: str, timeout_seconds: float = 5.0) -> tuple[str, ...]:
     """Return IPv4 addresses for host via DoH, with static fallbacks."""
     host = host.lower().strip()
+    # 85po.net's current DNS publishes an origin address for www, while the
+    # HTTPS site is served through Cloudflare. Prefer the known edge IPs so
+    # curl sends the correct SNI/Host pair to the TLS terminator.
+    if host == "www.85po.net" and host in FALLBACK_IPS:
+        return FALLBACK_IPS[host]
     answers: list[str] = []
     for template in _DOH_ENDPOINTS:
         try:

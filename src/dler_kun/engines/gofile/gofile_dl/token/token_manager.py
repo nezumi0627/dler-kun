@@ -25,8 +25,9 @@ class TokenManager:
         if token and any(t["token"] == token and t["valid"] for t in self.tokens):
             return token
 
-        if self.tokens:
-            return self.tokens[0]["token"]
+        for candidate in self.tokens:
+            if candidate.get("valid") and candidate.get("token"):
+                return candidate["token"]
 
         return None
 

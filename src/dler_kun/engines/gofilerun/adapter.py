@@ -478,10 +478,10 @@ def _dedupe_targets(targets: list[MediaTarget]) -> list[MediaTarget]:
         collided = used.setdefault(target.rel_dir, set())
         filename = base
         counter = 2
-        while filename in collided:
+        while filename.casefold() in collided:
             stem, ext = os.path.splitext(base)
             filename = f"{stem} ({counter}){ext}"
             counter += 1
-        collided.add(filename)
+        collided.add(filename.casefold())
         result.append(MediaTarget(entry=target.entry, rel_dir=target.rel_dir, filename=filename))
     return result
