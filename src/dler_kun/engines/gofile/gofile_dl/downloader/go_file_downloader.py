@@ -174,6 +174,7 @@ class GoFileDownloader:
                 return result
 
             files_to_download = await self._extract_files(content_data)
+            files_to_download = _reserve_unique_file_names(files_to_download)
             total = len(files_to_download)
             total_bytes = sum(f.get("size") or 0 for f in files_to_download)
 
@@ -307,3 +308,26 @@ class GoFileDownloader:
             console.print_exception()
 
         return result
+
+
+def _reserve_unique_file_names(files: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Prevent case-insensitive filename collisions on Windows."""
+    reserved: set[str] = set()
+    result: list[dict[str, Any]] = []
+    for file_info in files:
+        candidate = str(file_info["name"])
+        path = Path(candidate)
+        stem = path.stem
+        suffix = path.suffix
+        counter = 2
+        key = os.path.normcase(candidate).casefold()
+        while key in reserved:
+            candidate = str(path.with_name(f"{stem}-{counter}{suffix}"))
+            key = os.path.normcase(candidate).casefold()
+            counter += 1
+        reserved.add(key)
+        if candidate == file_info["name"]:
+            result.append(file_info)
+        else:
+            result.append({**file_info, "name": candidate})
+    return result

@@ -99,7 +99,7 @@ class MvfileEngine(IDownloader):
             errors: list[str] = []
             failed: list[dict[str, str]] = []
             skipped_failed = 0
-            duplicate_names = Counter(entry.name for entry in targets)
+            duplicate_names = Counter(entry.name.casefold() for entry in targets)
             progress = request.options.get("progress_callback")
             total = len(targets)
             for index, entry in enumerate(targets, start=1):
@@ -130,7 +130,7 @@ class MvfileEngine(IDownloader):
                         proxy=proxy,
                         name_suffix=(
                             entry.short_link
-                            if duplicate_names[entry.name] > 1
+                            if duplicate_names[entry.name.casefold()] > 1
                             else ""
                         ),
                     )
@@ -293,6 +293,9 @@ class MvfileEngine(IDownloader):
                 output_dir = Path(request.output_dir)
                 output_dir.mkdir(parents=True, exist_ok=True)
                 force = bool(request.options.get("force") or request.options.get("overwrite"))
+                duplicate_names = Counter(
+                    entry.name.casefold() for entry in media_entries
+                )
                 for entry in media_entries:
                     try:
                         path = self._download_entry(
@@ -301,6 +304,11 @@ class MvfileEngine(IDownloader):
                             force=force,
                             timeout_seconds=timeout_seconds,
                             referer=entry.page_url,
+                            name_suffix=(
+                                entry.short_link
+                                if duplicate_names[entry.name.casefold()] > 1
+                                else ""
+                            ),
                             hls_workers=int(request.options.get("hls_workers", 8)),
                             local_addr=str(request.options.get("local_addr") or ""),
                             proxy=str(request.options.get("proxy") or ""),

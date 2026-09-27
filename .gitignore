@@ -36,6 +36,11 @@ tmp/
 
 # Local agent state (never commit)
 .claude/
+.kilo/
+
+# Crawl output and Windows device-name artifact
+crawls/
+NUL
 
 # Secrets / service state
 .env

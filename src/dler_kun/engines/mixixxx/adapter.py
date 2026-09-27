@@ -13,6 +13,7 @@ from ...models import (
     EngineCapability,
     JobStatus,
 )
+from ...pathing import unique_path
 from .fast import (
     MixiSession,
     discover_video_pages,
@@ -223,10 +224,4 @@ def _base_path(output_dir: Path, title: str, suffix: str) -> Path:
 
 
 def _safe_path(output_dir: Path, title: str, suffix: str) -> Path:
-    target = _base_path(output_dir, title, suffix)
-    if target.exists():
-        counter = 1
-        while target.exists():
-            target = output_dir / f"{_safe_title(title)}_{counter}{suffix}"
-            counter += 1
-    return target
+    return unique_path(_base_path(output_dir, title, suffix), separator="_", start=1)

@@ -32,6 +32,11 @@ CARD_RE = re.compile(
     r'<div class="thumb thumb_rel item.*?</a>\s*</div>',
     re.S,
 )
+CURRENT_CARD_RE = re.compile(
+    r'<a\s+href="(?P<href>https?://[^"]+/(?:v|video)/\d+/[^"]+)"'
+    r'\s+title="(?P<title>[^"]*)"[^>]*>(?P<body>.*?)</a>',
+    re.S | re.I,
+)
 HREF_RE = re.compile(r'href="(?P<href>[^"]*/v/\d+/[^"]*)"')
 TITLE_RE = re.compile(r'title="(?P<title>[^"]*)"')
 THUMB_RE = re.compile(r'data-(?:original|webp)="(?P<thumb>https?://[^"]+)"')
@@ -43,7 +48,13 @@ DATE_ALT_RES = (
     re.compile(r"thumb-item-date.*?</i>\s*(?P<date>[^<]+)</div>", re.S | re.I),
     re.compile(r'class="date"[^>]*>\s*(?P<date>[^<]+)\s*<', re.I),
 )
-VIDEO_PAGE_ID_RE = re.compile(r"/v/(?P<id>\d+)/")
+CURRENT_DATE_RE = re.compile(
+    r'class="added"[^>]*>\s*(?:<em[^>]*>)?\s*(?P<date>[^<]+)', re.I
+)
+CURRENT_DURATION_RE = re.compile(
+    r'class="duration"[^>]*>\s*(?P<duration>[^<]+)', re.I
+)
+VIDEO_PAGE_ID_RE = re.compile(r"/(?:v|video)/(?P<id>\d+)/")
 DURATION_RE = re.compile(
     r'<div class="time"><span[^>]*></span>\s*(?P<duration>[^<]+)</div>', re.S
 )
@@ -297,25 +308,49 @@ def parse_listing_items(
     html: str, base_url: str, now: datetime
 ) -> list[FastListingItem]:
     items: list[FastListingItem] = []
-    for card in CARD_RE.findall(html):
-        href = match_group(HREF_RE, card, "href")
-        if not href:
-            continue
-        title = unescape(match_group(TITLE_RE, card, "title") or "")
-        date_text = extract_listing_date_text(card)
+    cards = CARD_RE.findall(html)
+    if cards:
+        return [_parse_legacy_listing_card(card, base_url, now) for card in cards]
+
+    # 85po.net's current layout exposes each item as a video anchor.  Keep
+    # this separate from the legacy card parser because nested divs make a
+    # single regex for the whole card brittle.
+    for match in CURRENT_CARD_RE.finditer(html):
+        body = match.group("body")
+        href = match.group("href")
+        title = unescape(match.group("title"))
+        date_text = match_group(CURRENT_DATE_RE, body, "date") or ""
         items.append(
             FastListingItem(
                 page_url=urljoin(base_url, href),
                 title=" ".join(title.split()),
-                published_at=parse_published_at(date_text, now),
-                thumbnail_url=match_group(THUMB_RE, card, "thumb"),
+                published_at=parse_published_at(unescape(date_text), now),
+                thumbnail_url=match_group(THUMB_RE, body, "thumb"),
                 duration=" ".join(
-                    (match_group(DURATION_RE, card, "duration") or "").split()
+                    (match_group(CURRENT_DURATION_RE, body, "duration") or "").split()
                 )
                 or None,
             )
         )
     return items
+
+
+def _parse_legacy_listing_card(
+    card: str, base_url: str, now: datetime
+) -> FastListingItem:
+    href = match_group(HREF_RE, card, "href")
+    title = unescape(match_group(TITLE_RE, card, "title") or "")
+    date_text = extract_listing_date_text(card)
+    return FastListingItem(
+        page_url=urljoin(base_url, href or ""),
+        title=" ".join(title.split()),
+        published_at=parse_published_at(date_text, now),
+        thumbnail_url=match_group(THUMB_RE, card, "thumb"),
+        duration=" ".join(
+            (match_group(DURATION_RE, card, "duration") or "").split()
+        )
+        or None,
+    )
 
 
 def select_best_media_url(html: str) -> str | None:

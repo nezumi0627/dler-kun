@@ -11,6 +11,20 @@ _RELATIVE_DAYS_PATTERNS = [
     re.compile(r"(?P<days>\d+)\s*ngay truoc", re.IGNORECASE),
 ]
 
+_RELATIVE_HOURS_PATTERNS = [
+    re.compile(r"(?P<hours>\d+)\s*時間前"),
+    re.compile(r"(?P<hours>\d+)\s*小时前"),
+    re.compile(r"(?P<hours>\d+)\s*hours?\s+ago", re.IGNORECASE),
+    re.compile(r"(?P<hours>\d+)\s*giờ trước", re.IGNORECASE),
+]
+
+_RELATIVE_MINUTES_PATTERNS = [
+    re.compile(r"(?P<minutes>\d+)\s*分前"),
+    re.compile(r"(?P<minutes>\d+)\s*分钟前"),
+    re.compile(r"(?P<minutes>\d+)\s*minutes?\s+ago", re.IGNORECASE),
+    re.compile(r"(?P<minutes>\d+)\s*phút trước", re.IGNORECASE),
+]
+
 _RELATIVE_WEEKS_PATTERNS = [
     re.compile(r"(?P<weeks>\d+)\s*週間前"),
     re.compile(r"(?P<weeks>\d+)\s*星期前"),
@@ -66,6 +80,16 @@ def parse_published_at(text: str, now: datetime | None = None) -> datetime | Non
         or re.search(r"\byesterday\b", normalized, re.IGNORECASE)
     ):
         return now - timedelta(days=1)
+
+    for pattern in _RELATIVE_MINUTES_PATTERNS:
+        match = pattern.search(normalized)
+        if match:
+            return now - timedelta(minutes=int(match.group("minutes")))
+
+    for pattern in _RELATIVE_HOURS_PATTERNS:
+        match = pattern.search(normalized)
+        if match:
+            return now - timedelta(hours=int(match.group("hours")))
 
     for pattern in _RELATIVE_DAYS_PATTERNS:
         match = pattern.search(normalized)

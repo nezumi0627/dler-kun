@@ -1,11 +1,35 @@
 from __future__ import annotations
 
 import importlib
+from datetime import datetime, timezone
 from pathlib import Path
 
 fast = importlib.import_module("dler_kun.engines.85xo.fast")
 downloader = importlib.import_module("dler_kun.engines.85xo.xo_dler.downloader")
 models = importlib.import_module("dler_kun.engines.85xo.xo_dler.models")
+
+
+def test_parse_current_85po_listing_layout_and_relative_time() -> None:
+    html = """
+    <div class="item">
+      <a href="https://www.85po.net/ja/video/12345/example/" title="Example">
+        <img data-webp="https://cdn.example/thumb.webp">
+        <div class="duration">9:40</div>
+        <div class="added"><em>9時間前</em></div>
+      </a>
+    </div>
+    """
+    now = datetime(2026, 9, 28, 12, tzinfo=timezone.utc)
+
+    items = fast.parse_listing_items(
+        html, "https://www.85po.net/ja/latest-updates/", now
+    )
+
+    assert len(items) == 1
+    assert items[0].page_url.endswith("/video/12345/example/")
+    assert items[0].published_at == datetime(2026, 9, 28, 3, tzinfo=timezone.utc)
+    assert items[0].duration == "9:40"
+    assert fast.video_page_key(items[0].page_url) == "12345"
 
 
 def test_parallel_download_keeps_existing_and_reserves_duplicate_names(

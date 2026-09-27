@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-_BASE = "https://www.85xo.com/ja"
+_BASE = "https://www.85po.net/ja"
 
 DEFAULT_85XO_SEEDS: tuple[str, ...] = (
     f"{_BASE}/latest-updates/",
-    "https://www.85xo.com/vi/latest-updates/",
+    "https://www.85po.net/vi/latest-updates/",
 )
 
 _SOURCE_ALIASES: dict[str, tuple[str, ...]] = {
