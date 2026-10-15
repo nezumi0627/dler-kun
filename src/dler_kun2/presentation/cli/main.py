@@ -35,6 +35,10 @@ def main(argv: list[str] | None = None) -> int:
         if name in {"download", "crawl"}:
             command.add_argument("--max-pages", type=int)
             command.add_argument("--password")
+        if name == "download":
+            command.add_argument("--force", action="store_true")
+        if name == "crawl":
+            command.add_argument("--overwrite", action="store_true")
         if name in {"crawl", "ranking"}:
             command.add_argument("--limit", type=int)
         if name == "crawl":
@@ -60,8 +64,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "download" and target:
         target = target[0]
     seeds = tuple(getattr(args, "seed", ())) + tuple(getattr(args, "source", ()))
-    option_names = ("max_pages", "limit", "password", "segment_concurrency", "browser_path", "ffmpeg_path", "timeout_seconds", "resolve_workers")
-    options = {name: getattr(args, name) for name in option_names if getattr(args, name, None) is not None}
+    option_names = ("max_pages", "limit", "password", "segment_concurrency", "browser_path", "ffmpeg_path", "timeout_seconds", "resolve_workers", "force", "overwrite")
+    options = {name: value for name in option_names if (value := getattr(args, name, None)) not in (None, False)}
     try:
         configured_output = ConfigStore().as_dict(redact=False).get("output_dir", "downloads")
         output_dir = getattr(args, "output_dir", None) or Path(str(configured_output))

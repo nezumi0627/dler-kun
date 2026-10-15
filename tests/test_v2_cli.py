@@ -45,7 +45,7 @@ class Engine:
 
 
 class Transfer:
-    async def transfer(self, plan, output_dir):
+    async def transfer(self, plan, output_dir, *, force=False):
         return output_dir / plan.suggested_name
 
 
@@ -69,7 +69,7 @@ def test_download_many_keeps_successes_when_one_url_fails(tmp_path):
             return DownloadPlan(SECRET, request.url, request.url, "video", request.url.rsplit("/", 1)[-1] + ".mp4", None)
 
     class NamedTransfer:
-        async def transfer(self, plan, output_dir):
+        async def transfer(self, plan, output_dir, *, force=False):
             return output_dir / plan.suggested_name
 
     result = asyncio.run(
@@ -85,6 +85,29 @@ def test_download_many_keeps_successes_when_one_url_fails(tmp_path):
     assert result.completed == 2
     assert {path.name for path in result.output_paths} == {"one.mp4", "two.mp4"}
     assert [error.code for error in result.errors] == [ErrorCode.NOT_FOUND]
+
+
+def test_download_many_deduplicates_repeated_input_urls(tmp_path):
+    class CountingEngine(Engine):
+        calls = 0
+
+        async def resolve_download(self, request):
+            self.calls += 1
+            return DownloadPlan(SECRET, request.url, request.url, "video", "clip.mp4", None)
+
+    class CountingTransfer:
+        calls = 0
+
+        async def transfer(self, plan, output_dir, *, force=False):
+            self.calls += 1
+            return output_dir / "clip.mp4"
+
+    engine = CountingEngine()
+    transfer = CountingTransfer()
+    url = "https://sample.test/one"
+    result = asyncio.run(download_many((url, url), tmp_path, registry(engine), transfer))
+    assert engine.calls == transfer.calls == 1
+    assert result.requested == result.completed == 1
 
 
 def test_crawl_retains_plans_and_only_transfers_on_request(tmp_path):
@@ -131,12 +154,12 @@ def test_cli_download_accepts_multiple_urls(capsys, monkeypatch):
         return {"accepted": list(kwargs["targets"])}
 
     monkeypatch.setattr("dler_kun2.presentation.cli.main.run_command", run)
-    assert main(["download", "https://sample.test/a", "https://sample.test/b", "--parallel-urls", "2", "--password", "pass", "--json"]) == 0
+    assert main(["download", "https://sample.test/a", "https://sample.test/b", "--parallel-urls", "2", "--password", "pass", "--force", "--json"]) == 0
     assert captured["command"] == "download"
     assert captured["target"] == "https://sample.test/a"
     assert captured["targets"] == ("https://sample.test/a", "https://sample.test/b")
     assert captured["parallel_urls"] == 2
-    assert captured["options"] == {"password": "pass"}
+    assert captured["options"] == {"password": "pass", "force": True}
     assert json.loads(capsys.readouterr().out)["accepted"] == list(captured["targets"])
 
 

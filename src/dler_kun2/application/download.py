@@ -15,7 +15,7 @@ from dler_kun2.routing.registry import EngineRegistry, RouteError
 
 
 class TransferService(Protocol):
-    async def transfer(self, plan: DownloadPlan, output_dir: Path) -> Path: ...
+    async def transfer(self, plan: DownloadPlan, output_dir: Path, *, force: bool = False) -> Path: ...
 
 
 @runtime_checkable
@@ -44,7 +44,7 @@ async def download(url: str, output_dir: Path, registry: EngineRegistry, transfe
         errors = list(result.errors)
         for plan in result.plans:
             try:
-                paths.append(await transfer.transfer(plan, output_dir))
+                paths.append(await transfer.transfer(plan, output_dir, force=bool(request.options.get("force"))))
             except EngineError as exc:
                 errors.append(exc)
             except Exception as exc:
@@ -55,7 +55,7 @@ async def download(url: str, output_dir: Path, registry: EngineRegistry, transfe
                 errors.append(EngineError(code, "media transfer failed", retry_after))
         return DownloadResult(output_paths=tuple(paths), requested=result.requested, discovered=result.discovered, completed=len(paths), unavailable=result.unavailable, errors=tuple(errors))
     plan = await engine.resolve_download(request)
-    path = await transfer.transfer(plan, output_dir)
+    path = await transfer.transfer(plan, output_dir, force=bool(request.options.get("force")))
     return DownloadResult(output_paths=(path,), requested=1, discovered=1, completed=1)
 
 
@@ -74,6 +74,7 @@ async def download_many(
         raise EngineError(ErrorCode.INVALID_REQUEST, "concurrency must be positive")
 
     semaphore = asyncio.Semaphore(concurrency)
+    unique_urls = tuple(dict.fromkeys(urls))
 
     async def run_one(url: str) -> DownloadResult | EngineError:
         async with semaphore:
@@ -90,7 +91,7 @@ async def download_many(
                     return EngineError(exc.code, "download request failed", exc.retry_after)
                 return EngineError(ErrorCode.DOWNLOAD_FAILED, "download request failed")
 
-    results = await asyncio.gather(*(run_one(url) for url in urls))
+    results = await asyncio.gather(*(run_one(url) for url in unique_urls))
     successful = [result for result in results if isinstance(result, DownloadResult)]
     errors = [result for result in results if isinstance(result, EngineError)]
     return DownloadResult(

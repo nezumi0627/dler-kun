@@ -9,6 +9,7 @@ from dler_kun2.domain.errors import EngineError, ErrorCode
 from dler_kun2.domain.models import CrawlResult
 from dler_kun2.domain.plans import DownloadPlan
 from dler_kun2.infrastructure.http.client import HttpError, HttpRuntime
+from dler_kun2.infrastructure.storage.cache import JsonCache
 from dler_kun2.infrastructure.storage.paths import OutputAllocator
 from dler_kun2.infrastructure.storage.transfer import TransferService
 from dler_kun2.routing.registry import EngineRegistry
@@ -156,6 +157,107 @@ def test_failed_stream_removes_reserved_output_and_partial_file(tmp_path):
         async def request(self, _method, _url):
             return Response()
 
-    with pytest.raises(OSError):
+    with pytest.raises(EngineError) as failure:
         asyncio.run(TransferService(Runtime()).transfer(plan("movie.mp4"), tmp_path))
+    assert failure.value.code is ErrorCode.DOWNLOAD_FAILED
     assert list(tmp_path.iterdir()) == []
+
+
+def test_transfer_rejects_size_mismatch_and_cleans_reserved_path(tmp_path):
+    class Content:
+        async def iter_chunked(self, _size):
+            yield b"wrong"
+
+    class Response:
+        content = Content()
+
+        def release(self):
+            pass
+
+    class Runtime:
+        async def request(self, _method, _url):
+            return Response()
+
+    item = DownloadPlan("https://cdn.example/a", "https://site.example/a", "https://site.example/a", "video", "clip.mp4", 10)
+    with pytest.raises(EngineError) as failure:
+        asyncio.run(TransferService(Runtime()).transfer(item, tmp_path))
+    assert failure.value.code is ErrorCode.DOWNLOAD_FAILED
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_transfer_cache_reuses_only_verified_output_under_requested_root(tmp_path):
+    class Content:
+        async def iter_chunked(self, _size):
+            yield b"complete"
+
+    class Response:
+        content = Content()
+
+        def release(self):
+            pass
+
+    class Runtime:
+        calls = 0
+
+        async def request(self, _method, _url):
+            self.calls += 1
+            return Response()
+
+    async def scenario():
+        runtime = Runtime()
+        cache = JsonCache(tmp_path / "transfer-cache.json")
+        transfer = TransferService(runtime, cache=cache)
+        item = plan("movie.mp4", "https://site.example/share")
+        first = await transfer.transfer(item, tmp_path / "first")
+        cached = await transfer.transfer(item, tmp_path / "first")
+        other_item = DownloadPlan("https://cdn.example/other", item.source_url, item.source_page, "video", "movie.mp4", None)
+        other = await transfer.transfer(other_item, tmp_path / "first")
+        second_root = await transfer.transfer(item, tmp_path / "second")
+        assert cached == first
+        assert second_root != first
+        assert other != first
+        assert runtime.calls == 3
+        return first
+
+    first = asyncio.run(scenario())
+    assert first.read_bytes() == b"complete"
+    cache_text = (tmp_path / "transfer-cache.json").read_text(encoding="utf-8")
+    assert "https://site.example/share" not in cache_text
+    assert "signature=secret" not in cache_text
+    assert "cdn.example" not in cache_text
+
+
+def test_transfer_force_refetches_cached_plan_without_overwriting_existing_file(tmp_path):
+    class Content:
+        def __init__(self, content):
+            self.content = content
+
+        async def iter_chunked(self, _size):
+            yield self.content
+
+    class Response:
+        def __init__(self, content):
+            self.content = Content(content)
+
+        def release(self):
+            pass
+
+    class Runtime:
+        calls = 0
+
+        async def request(self, _method, _url):
+            self.calls += 1
+            return Response(b"complete" if self.calls == 1 else b"refreshed")
+
+    async def scenario():
+        runtime = Runtime()
+        transfer = TransferService(runtime, cache=JsonCache(tmp_path / "cache.json"))
+        item = plan("clip.mp4", "https://site.example/item")
+        first = await transfer.transfer(item, tmp_path / "output")
+        refreshed = await transfer.transfer(item, tmp_path / "output", force=True)
+        assert first != refreshed
+        assert first.read_bytes() == b"complete"
+        assert refreshed.read_bytes() == b"refreshed"
+        assert runtime.calls == 2
+
+    asyncio.run(scenario())

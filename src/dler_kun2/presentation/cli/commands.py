@@ -17,6 +17,7 @@ from dler_kun2.infrastructure.state.config import ConfigStore
 from dler_kun2.infrastructure.state.history import HistoryStore
 from dler_kun2.infrastructure.state.jobs import JobStore
 from dler_kun2.infrastructure.state.paths import state_dir
+from dler_kun2.infrastructure.storage.cache import JsonCache
 from dler_kun2.infrastructure.storage.transfer import TransferService
 from dler_kun2.routing.registry import EngineRegistry, RouteError
 
@@ -87,7 +88,7 @@ def run_command(command: str, target: str | None, registry: EngineRegistry, *, o
 
         return asyncio.run(managed())
 
-    transfer = TransferService(runtime) if runtime is not None else None
+    transfer = TransferService(runtime, cache=JsonCache(state_dir() / "transfer-cache.json")) if runtime is not None else None
     if command == "sites":
         return {"sites": registry.sites()}
     if command == "detect":
