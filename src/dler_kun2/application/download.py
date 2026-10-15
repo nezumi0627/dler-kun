@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
@@ -56,3 +57,47 @@ async def download(url: str, output_dir: Path, registry: EngineRegistry, transfe
     plan = await engine.resolve_download(request)
     path = await transfer.transfer(plan, output_dir)
     return DownloadResult(output_paths=(path,), requested=1, discovered=1, completed=1)
+
+
+async def download_many(
+    urls: tuple[str, ...],
+    output_dir: Path,
+    registry: EngineRegistry,
+    transfer: TransferService | None = None,
+    options: EngineOptions | None = None,
+    *,
+    concurrency: int = 4,
+) -> DownloadResult:
+    if not urls:
+        raise EngineError(ErrorCode.INVALID_REQUEST, "at least one URL is required")
+    if concurrency < 1:
+        raise EngineError(ErrorCode.INVALID_REQUEST, "concurrency must be positive")
+
+    semaphore = asyncio.Semaphore(concurrency)
+
+    async def run_one(url: str) -> DownloadResult | EngineError:
+        async with semaphore:
+            try:
+                return await download(url, output_dir, registry, transfer, options)
+            except RouteError as exc:
+                return exc.error
+            except EngineError as exc:
+                return exc
+            except Exception as exc:
+                from dler_kun2.infrastructure.http.client import HttpError
+
+                if isinstance(exc, HttpError):
+                    return EngineError(exc.code, "download request failed", exc.retry_after)
+                return EngineError(ErrorCode.DOWNLOAD_FAILED, "download request failed")
+
+    results = await asyncio.gather(*(run_one(url) for url in urls))
+    successful = [result for result in results if isinstance(result, DownloadResult)]
+    errors = [result for result in results if isinstance(result, EngineError)]
+    return DownloadResult(
+        output_paths=tuple(path for result in successful for path in result.output_paths),
+        requested=sum(result.requested for result in successful) + len(errors),
+        discovered=sum(result.discovered for result in successful),
+        completed=sum(result.completed for result in successful),
+        unavailable=sum(result.unavailable for result in successful),
+        errors=tuple(error for result in successful for error in result.errors) + tuple(errors),
+    )

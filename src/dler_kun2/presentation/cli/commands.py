@@ -6,7 +6,7 @@ import asyncio
 from pathlib import Path
 
 from dler_kun2.application.crawl import crawl
-from dler_kun2.application.download import download
+from dler_kun2.application.download import download, download_many
 from dler_kun2.application.ranking import ranking
 from dler_kun2.domain.errors import EngineError, ErrorCode
 from dler_kun2.infrastructure.state.config import ConfigStore
@@ -16,7 +16,7 @@ from dler_kun2.infrastructure.storage.transfer import TransferService
 from dler_kun2.routing.registry import EngineRegistry, RouteError
 
 
-def run_command(command: str, target: str | None, registry: EngineRegistry, *, output_dir: Path, download_items: bool = False, seeds: tuple[str, ...] = (), days: int | None = None, save_config: bool = False, cancel_all: bool = False) -> object:
+def run_command(command: str, target: str | None, registry: EngineRegistry, *, output_dir: Path, download_items: bool = False, seeds: tuple[str, ...] = (), days: int | None = None, save_config: bool = False, cancel_all: bool = False, targets: tuple[str, ...] | None = None, parallel_urls: int = 4) -> object:
     runtime = registry.http_runtime
 
     def execute(coroutine, kind: str):
@@ -81,9 +81,13 @@ def run_command(command: str, target: str | None, registry: EngineRegistry, *, o
         changed = store.cancel(target)
         return {"job_id": target, "status": job.status, "cancel_requested": changed or job.cancel_requested}
     if command == "download":
-        if target is None:
+        if parallel_urls < 1:
+            raise RouteError(EngineError(ErrorCode.INVALID_REQUEST, "parallel URL count must be positive"))
+        urls = targets or ((target,) if target is not None else ())
+        if not urls:
             raise RouteError(EngineError(ErrorCode.INVALID_REQUEST, "URL is required"))
-        return execute(download(target, output_dir, registry, transfer), "download")
+        operation = download_many(urls, output_dir, registry, transfer, concurrency=parallel_urls) if len(urls) > 1 else download(urls[0], output_dir, registry, transfer)
+        return execute(operation, "download")
     if command in {"crawl", "ranking"}:
         if target is None:
             raise RouteError(EngineError(ErrorCode.INVALID_REQUEST, "service is required"))

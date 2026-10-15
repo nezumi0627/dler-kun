@@ -18,8 +18,10 @@ def main(argv: list[str] | None = None) -> int:
     commands = parser.add_subparsers(dest="command", required=True)
     for name in ("detect", "sites", "download", "crawl", "ranking", "jobs", "cancel", "config"):
         command = commands.add_parser(name)
-        if name in {"detect", "download"}:
+        if name == "detect":
             command.add_argument("target")
+        if name == "download":
+            command.add_argument("target", nargs="+")
         if name == "cancel":
             command.add_argument("target", nargs="?")
             command.add_argument("--all", action="store_true")
@@ -33,12 +35,18 @@ def main(argv: list[str] | None = None) -> int:
         command.add_argument("--json", action="store_true")
         if name in {"download", "crawl", "ranking"}:
             command.add_argument("-o", "--output-dir", type=Path, default=Path("downloads"))
+        if name == "download":
+            command.add_argument("--parallel-urls", type=int, default=4, help="Maximum URLs downloaded concurrently")
         if name in {"crawl", "ranking"}:
             command.add_argument("--download", action="store_true")
     args = parser.parse_args(argv)
     json_mode = args.global_json or args.json
+    target = getattr(args, "service", getattr(args, "target", None))
+    targets = tuple(target) if args.command == "download" else None
+    if args.command == "download" and target:
+        target = target[0]
     try:
-        value = run_command(args.command, getattr(args, "service", getattr(args, "target", None)), build_registry(EngineRegistry()), output_dir=getattr(args, "output_dir", Path("downloads")), download_items=getattr(args, "download", False), seeds=tuple(getattr(args, "seed", ())), days=getattr(args, "days", None), save_config=getattr(args, "save", False), cancel_all=getattr(args, "all", False))
+        value = run_command(args.command, target, build_registry(EngineRegistry()), output_dir=getattr(args, "output_dir", Path("downloads")), download_items=getattr(args, "download", False), seeds=tuple(getattr(args, "seed", ())), days=getattr(args, "days", None), save_config=getattr(args, "save", False), cancel_all=getattr(args, "all", False), targets=targets, parallel_urls=getattr(args, "parallel_urls", 4))
     except RouteError as exc:
         value = exc.error
     except EngineError as exc:

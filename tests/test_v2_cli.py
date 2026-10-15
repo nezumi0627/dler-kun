@@ -7,9 +7,9 @@ from pathlib import Path
 import pytest
 
 from dler_kun2.application.crawl import crawl
-from dler_kun2.application.download import download
+from dler_kun2.application.download import download, download_many
 from dler_kun2.domain.contracts import EngineCapabilities
-from dler_kun2.domain.errors import ErrorCode
+from dler_kun2.domain.errors import EngineError, ErrorCode
 from dler_kun2.domain.models import CrawlResult
 from dler_kun2.domain.plans import DownloadPlan
 from dler_kun2.infrastructure.state.jobs import JobStore
@@ -61,6 +61,32 @@ def test_download_resolves_plan_and_transfers_at_application_boundary(tmp_path):
     assert result.output_paths == (tmp_path / "file.mp4",)
 
 
+def test_download_many_keeps_successes_when_one_url_fails(tmp_path):
+    class MixedEngine(Engine):
+        async def resolve_download(self, request):
+            if request.url.endswith("bad"):
+                raise EngineError(ErrorCode.NOT_FOUND, "missing")
+            return DownloadPlan(SECRET, request.url, request.url, "video", request.url.rsplit("/", 1)[-1] + ".mp4", None)
+
+    class NamedTransfer:
+        async def transfer(self, plan, output_dir):
+            return output_dir / plan.suggested_name
+
+    result = asyncio.run(
+        download_many(
+            ("https://sample.test/one", "https://sample.test/bad", "https://sample.test/two"),
+            tmp_path,
+            registry(MixedEngine()),
+            NamedTransfer(),
+        )
+    )
+    assert result.requested == 3
+    assert result.discovered == 2
+    assert result.completed == 2
+    assert {path.name for path in result.output_paths} == {"one.mp4", "two.mp4"}
+    assert [error.code for error in result.errors] == [ErrorCode.NOT_FOUND]
+
+
 def test_crawl_retains_plans_and_only_transfers_on_request(tmp_path):
     found = asyncio.run(crawl("sample", ("https://sample.test/1",), None, tmp_path, registry(), Transfer()))
     saved = asyncio.run(crawl("sample", ("https://sample.test/1",), None, tmp_path, registry(), Transfer(), download_items=True))
@@ -93,6 +119,22 @@ def test_cli_sites_json_reports_verified_engines(capsys):
     assert main(["sites", "--json"]) == 0
     ids = {item["engine_id"] for item in json.loads(capsys.readouterr().out)["sites"]}
     assert ids == {"85xo", "gofile", "gofilerun", "linkex", "mixixxx", "mvfile", "videy"}
+
+
+def test_cli_download_accepts_multiple_urls(capsys, monkeypatch):
+    captured = {}
+
+    def run(command, target, _registry, **kwargs):
+        captured.update(command=command, target=target, targets=kwargs["targets"], parallel_urls=kwargs["parallel_urls"])
+        return {"accepted": list(kwargs["targets"])}
+
+    monkeypatch.setattr("dler_kun2.presentation.cli.main.run_command", run)
+    assert main(["download", "https://sample.test/a", "https://sample.test/b", "--parallel-urls", "2", "--json"]) == 0
+    assert captured["command"] == "download"
+    assert captured["target"] == "https://sample.test/a"
+    assert captured["targets"] == ("https://sample.test/a", "https://sample.test/b")
+    assert captured["parallel_urls"] == 2
+    assert json.loads(capsys.readouterr().out)["accepted"] == list(captured["targets"])
 
 
 @pytest.mark.parametrize("command", ["detect", "download", "crawl", "ranking", "jobs", "cancel", "config"])
