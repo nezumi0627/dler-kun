@@ -9,8 +9,20 @@ from dler_kun2.domain.errors import EngineError, ErrorCode
 
 from .rules import PathPrefix, RouteRule
 
-# Historical overlap is unresolved until an adapter proves backend ownership.
-UNVERIFIED_OVERLAPS = frozenset({"tweetfile.com", "twimg.jp", "twimg-media.com"})
+# Legacy aliases not yet verified against a representative share page/API fixture.
+# This is a quarantine list, not an engine ownership declaration.
+UNVERIFIED_HOSTS = frozenset({
+    "gofilelab.com", "gofile.run", "85xo.com", "85po.com",
+    "mvfile.com", "file-photo.com", "tweetfile.com", "gofile.website",
+    "image-share.cc", "tweetplay.com", "imagedist.com", "gofile.rocks",
+    "gofile.host", "gofile.guru", "gofile.name", "mediasplayer.com",
+    "twimg-media.com", "media-twimg.com", "twimg.jp", "video.twimg.jp",
+    "video.twimg-image.com", "video.twimg1.com", "cdn.twimg1.com",
+    "twimg1.com", "twimg-album.com", "file-bio.com", "twfiles.com",
+    "gofile.video", "gofile.trade", "gofile.bar", "gofile.pl",
+    "cdn1.twimg-media.com", "video.twimg.news", "video.twimg.it.com",
+    "mixi-xxx.cc", "l2e.click",
+})
 
 
 class RouteError(Exception):
@@ -63,9 +75,18 @@ class EngineRegistry:
             raise RouteError(EngineError(ErrorCode.INVALID_REQUEST, "invalid URL"))
         host = host.lower().rstrip(".")
         candidates = [route for route in self._routes if host in route.hosts]
-        if host in UNVERIFIED_OVERLAPS and (not candidates or any(route.backend_probe is None for route in candidates)):
+        if host in UNVERIFIED_HOSTS and (not candidates or any(route.backend_probe is None for route in candidates)):
             raise RouteError(EngineError(ErrorCode.AMBIGUOUS_SERVICE, "backend ownership is unverified"))
-        matches = [route for route in candidates if (route.path_predicate is None or route.path_predicate(parsed.path or "/")) and (route.backend_probe is None or route.backend_probe(url))]
+        matches = []
+        for route in candidates:
+            if route.path_predicate is not None and not route.path_predicate(parsed.path or "/"):
+                continue
+            try:
+                probe_matches = route.backend_probe is None or route.backend_probe(url)
+            except Exception as exc:
+                raise RouteError(EngineError(ErrorCode.NETWORK_ERROR, "backend probe failed")) from exc
+            if probe_matches:
+                matches.append(route)
         if len(matches) == 1:
             return self._engines[matches[0].engine_id]
         if candidates:

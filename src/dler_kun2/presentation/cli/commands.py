@@ -12,7 +12,7 @@ from dler_kun2.domain.errors import EngineError, ErrorCode
 from dler_kun2.routing.registry import EngineRegistry, RouteError
 
 
-def run_command(command: str, target: str | None, registry: EngineRegistry, *, output_dir: Path, download_items: bool = False) -> object:
+def run_command(command: str, target: str | None, registry: EngineRegistry, *, output_dir: Path, download_items: bool = False, seeds: tuple[str, ...] = (), days: int | None = None) -> object:
     if command == "sites":
         return {"sites": registry.sites()}
     if command == "detect":
@@ -26,10 +26,9 @@ def run_command(command: str, target: str | None, registry: EngineRegistry, *, o
         return asyncio.run(download(target, output_dir, registry))
     if command in {"crawl", "ranking"}:
         if target is None:
-            raise RouteError(EngineError(ErrorCode.INVALID_REQUEST, "URL is required"))
-        engine = registry.resolve(target)
+            raise RouteError(EngineError(ErrorCode.INVALID_REQUEST, "service is required"))
         use_case = crawl if command == "crawl" else ranking
-        return asyncio.run(use_case(engine.engine_id, (target,), None, output_dir, registry, download_items=download_items))
+        return asyncio.run(use_case(target, seeds, days, output_dir, registry, download_items=download_items))
     if command in {"jobs", "cancel", "config"}:
         return EngineError(ErrorCode.UNSUPPORTED_CAPABILITY, f"{command} is pending infrastructure migration")
     raise RouteError(EngineError(ErrorCode.INVALID_REQUEST, "unknown command"))

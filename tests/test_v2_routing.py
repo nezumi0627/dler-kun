@@ -1,8 +1,9 @@
 import pytest
 
+from dler_kun.detector import ServiceDetector
 from dler_kun2.domain.contracts import EngineCapabilities
 from dler_kun2.domain.errors import ErrorCode
-from dler_kun2.routing.registry import EngineRegistry, RouteError
+from dler_kun2.routing.registry import UNVERIFIED_HOSTS, EngineRegistry, RouteError
 from dler_kun2.routing.rules import PathPrefix, RouteRule
 
 
@@ -24,10 +25,10 @@ class FakeEngine:
 @pytest.mark.parametrize(
     ("engine_id", "host"),
     [
-        ("gofile", "gofile.io"), ("gofilerun", "gofile.run"),
-        ("85xo", "85po.net"), ("mvfile", "image-share.cc"),
-        ("twimg", "cdn1.twimg-media.com"), ("videy", "videy.co"),
-        ("mixixxx", "mixi-xxx.cc"), ("linkex", "l2e.click"),
+        ("gofile", "gofile.io"),
+        ("gofile", "gofile-douga.com"),
+        ("85xo", "85po.net"),
+        ("videy", "videy.co"),
     ],
 )
 def test_registered_engine_routes_only_its_exact_host(engine_id, host):
@@ -61,11 +62,52 @@ def test_malformed_url_is_invalid_request(url):
     assert exc.value.error.code is ErrorCode.INVALID_REQUEST
 
 
-@pytest.mark.parametrize("host", ["tweetfile.com", "twimg.jp", "twimg-media.com"])
-def test_unverified_legacy_overlap_is_ambiguous(host):
+@pytest.mark.parametrize("host", [
+    "gofilelab.com", "gofile.run", "85xo.com", "85po.com",
+    "mvfile.com", "file-photo.com", "tweetfile.com", "gofile.website",
+    "image-share.cc", "tweetplay.com", "imagedist.com", "gofile.rocks",
+    "gofile.host", "gofile.guru", "gofile.name", "mediasplayer.com",
+    "twimg-media.com", "media-twimg.com", "twimg.jp", "video.twimg.jp",
+    "video.twimg-image.com", "video.twimg1.com", "cdn.twimg1.com",
+    "twimg1.com", "twimg-album.com", "file-bio.com", "twfiles.com",
+    "gofile.video", "gofile.trade", "gofile.bar", "gofile.pl",
+    "cdn1.twimg-media.com", "video.twimg.news", "video.twimg.it.com",
+    "mixi-xxx.cc", "l2e.click",
+])
+def test_unverified_legacy_alias_is_ambiguous(host):
     with pytest.raises(RouteError) as exc:
         EngineRegistry().resolve(f"https://{host}/item")
     assert exc.value.error.code is ErrorCode.AMBIGUOUS_SERVICE
+
+
+def test_every_legacy_host_is_verified_or_quarantined():
+    legacy_hosts = set().union(*(set(hosts) for hosts in ServiceDetector().supported_domains().values()))
+    assert legacy_hosts == UNVERIFIED_HOSTS | {
+        "gofile.io", "gofile-douga.com", "85po.net", "videy.co"
+    }
+
+
+def test_unverified_unique_host_stays_quarantined_after_bare_registration():
+    registry = EngineRegistry()
+    registry.register(FakeEngine("linkex"), [RouteRule("linkex", ("l2e.click",))])
+    with pytest.raises(RouteError) as exc:
+        registry.resolve("https://l2e.click/share")
+    assert exc.value.error.code is ErrorCode.AMBIGUOUS_SERVICE
+
+
+def test_probe_failure_is_typed_and_does_not_expose_exception(capsys, monkeypatch):
+    from dler_kun2.presentation.cli.main import main
+
+    def fail(_url):
+        raise RuntimeError("private-token")
+
+    registry = EngineRegistry()
+    registry.register(FakeEngine("twimg"), [RouteRule("twimg", ("twimg.jp",), backend_probe=fail)])
+    monkeypatch.setattr("dler_kun2.presentation.cli.main.EngineRegistry", lambda: registry)
+    assert main(["detect", "https://twimg.jp/item", "--json"]) == 2
+    payload = capsys.readouterr().out
+    assert '"code": "network_error"' in payload
+    assert "private-token" not in payload
 
 
 def test_disputed_host_needs_backend_probe_even_with_one_registration():

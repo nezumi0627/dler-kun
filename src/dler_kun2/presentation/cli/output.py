@@ -28,6 +28,10 @@ def emit(value: object, *, json_mode: bool) -> None:
         print(f"[ERROR] {value.code.value}: {value.message}")
     elif isinstance(value, dict) and "sites" in value:
         sites = value["sites"]
-        print("[INFO] No engines registered (migration pending)" if not sites else f"[INFO] {sites}")
+        print("[INFO] No engines registered (migration pending)" if not sites else f"[INFO] {len(sites)} engine(s) registered")
+    elif isinstance(value, dict) and "engine_id" in value:
+        print(f"[SUCCESS] {value['engine_id']}")
+    elif isinstance(value, (CrawlResult, DownloadResult)):
+        print(f"[INFO] discovered {value.discovered}, completed {value.completed}, unavailable {value.unavailable}, errors {len(value.errors)}")
     else:
-        print(f"[INFO] {payload}")
+        print("[INFO] Command completed")

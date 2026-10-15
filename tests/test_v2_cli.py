@@ -1,5 +1,6 @@
 import asyncio
 import json
+from pathlib import Path
 
 import pytest
 
@@ -9,7 +10,9 @@ from dler_kun2.domain.contracts import EngineCapabilities
 from dler_kun2.domain.errors import ErrorCode
 from dler_kun2.domain.models import CrawlResult
 from dler_kun2.domain.plans import DownloadPlan
+from dler_kun2.presentation.cli.commands import run_command
 from dler_kun2.presentation.cli.main import main
+from dler_kun2.presentation.cli.output import emit
 from dler_kun2.routing.registry import EngineRegistry, RouteError
 from dler_kun2.routing.rules import RouteRule
 
@@ -20,12 +23,18 @@ class Engine:
     engine_id = "sample"
     capabilities = EngineCapabilities(download=True, crawl=True)
 
+    def __init__(self):
+        self.last_crawl_request = None
+
     async def resolve_download(self, request):
         assert not hasattr(request, "output_dir")
         return DownloadPlan(SECRET, request.url, request.url, "video", "file.mp4", None)
 
     async def crawl(self, request):
+        self.last_crawl_request = request
         assert not hasattr(request, "download")
+        if not request.seeds:
+            return CrawlResult(requested=0, discovered=0)
         return CrawlResult(plans=(await self.resolve_download(type("R", (), {"url": request.seeds[0]})()),), requested=1, discovered=1)
 
     async def ranking(self, request):
@@ -37,9 +46,9 @@ class Transfer:
         return output_dir / plan.suggested_name
 
 
-def registry():
+def registry(engine: Engine | None = None):
     result = EngineRegistry()
-    result.register(Engine(), [RouteRule("sample", ("sample.test",))])
+    result.register(engine or Engine(), [RouteRule("sample", ("sample.test",))])
     return result
 
 
@@ -71,8 +80,10 @@ def test_cli_sites_json_reports_no_registered_engines(capsys):
 @pytest.mark.parametrize("command", ["detect", "download", "crawl", "ranking", "jobs", "cancel", "config"])
 def test_cli_json_is_valid_for_every_command(command, capsys):
     args = [command]
-    if command in {"detect", "download", "crawl", "ranking"}:
+    if command in {"detect", "download"}:
         args.append("https://unknown.test/item")
+    if command in {"crawl", "ranking"}:
+        args.append("85xo" if command == "crawl" else "gofile")
     if command == "cancel":
         args.append("job-1")
     args.append("--json")
@@ -84,3 +95,39 @@ def test_cli_does_not_claim_pending_download_works(capsys):
     assert main(["download", "https://gofile.io/d/1", "--json"]) == 2
     payload = json.loads(capsys.readouterr().out)
     assert payload["error"]["code"] == "unsupported_service"
+
+
+@pytest.mark.parametrize(("command", "service"), [("crawl", "85xo"), ("ranking", "gofile")])
+def test_crawl_and_ranking_accept_service_without_seed(command, service, capsys):
+    assert main([command, service, "--json"]) == 2
+    assert json.loads(capsys.readouterr().out)["error"]["code"] == "unsupported_service"
+
+
+def test_crawl_passes_optional_seed_and_days_to_application(tmp_path):
+    engine = Engine()
+    installed = registry(engine)
+    result = run_command("crawl", "sample", installed, output_dir=tmp_path, seeds=("https://sample.test/1",), days=3)
+    assert isinstance(result, CrawlResult)
+    assert len(result.plans) == 1
+    assert engine.last_crawl_request is not None
+    assert engine.last_crawl_request.days == 3
+
+
+def test_cli_crawl_accepts_v1_seed_and_days_flags(capsys, monkeypatch):
+    engine = Engine()
+    installed = registry(engine)
+    monkeypatch.setattr("dler_kun2.presentation.cli.main.EngineRegistry", lambda: installed)
+    assert main(["crawl", "sample", "--seed", "https://sample.test/1", "--days", "3", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["plans"][0]["source_url"] == "https://sample.test/1"
+    assert engine.last_crawl_request is not None
+    assert engine.last_crawl_request.days == 3
+
+
+def test_text_output_is_concise_and_redacted(capsys):
+    result = asyncio.run(crawl("sample", ("https://sample.test/1",), None, Path("downloads"), registry()))
+    emit(result, json_mode=False)
+    output = capsys.readouterr().out
+    assert "discovered 1" in output
+    assert "plans" not in output
+    assert "metadata" not in output
+    assert SECRET not in output
