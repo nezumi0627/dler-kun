@@ -74,7 +74,8 @@ def test_unsupported_capability_is_typed(tmp_path):
 
 def test_cli_sites_json_reports_verified_engines(capsys):
     assert main(["sites", "--json"]) == 0
-    assert json.loads(capsys.readouterr().out)["sites"][0]["engine_id"] == "videy"
+    ids = {item["engine_id"] for item in json.loads(capsys.readouterr().out)["sites"]}
+    assert ids == {"85xo", "videy"}
 
 
 @pytest.mark.parametrize("command", ["detect", "download", "crawl", "ranking", "jobs", "cancel", "config"])
@@ -83,7 +84,7 @@ def test_cli_json_is_valid_for_every_command(command, capsys):
     if command in {"detect", "download"}:
         args.append("https://unknown.test/item")
     if command in {"crawl", "ranking"}:
-        args.append("85xo" if command == "crawl" else "gofile")
+        args.append("unknown-engine" if command == "crawl" else "gofile")
     if command == "cancel":
         args.append("job-1")
     args.append("--json")
@@ -97,7 +98,7 @@ def test_cli_does_not_claim_pending_download_works(capsys):
     assert payload["error"]["code"] == "unsupported_service"
 
 
-@pytest.mark.parametrize(("command", "service"), [("crawl", "85xo"), ("ranking", "gofile")])
+@pytest.mark.parametrize(("command", "service"), [("crawl", "unknown-engine"), ("ranking", "gofile")])
 def test_crawl_and_ranking_accept_service_without_seed(command, service, capsys):
     assert main([command, service, "--json"]) == 2
     assert json.loads(capsys.readouterr().out)["error"]["code"] == "unsupported_service"

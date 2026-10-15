@@ -77,7 +77,7 @@ class HttpRuntime:
         self._timeout = aiohttp.ClientTimeout(
             total=total_timeout, connect=connect_timeout, sock_read=read_timeout
         )
-        self._connector = aiohttp.TCPConnector(limit=0)
+        self._connector: aiohttp.TCPConnector | None = None
         self._session: aiohttp.ClientSession | None = None
         self.limiter = OriginLimiter(concurrency, max_retry_wait)
         self.max_redirects = max_redirects
@@ -100,6 +100,8 @@ class HttpRuntime:
 
     async def _get_session(self) -> aiohttp.ClientSession:
         if self._session is None or self._session.closed:
+            if self._connector is None or self._connector.closed:
+                self._connector = aiohttp.TCPConnector(limit=0)
             self._session = aiohttp.ClientSession(
                 timeout=self._timeout, connector=self._connector
             )
@@ -201,7 +203,7 @@ class HttpRuntime:
     async def close(self) -> None:
         if self._session is not None and not self._session.closed:
             await self._session.close()
-        if not self._connector.closed:
+        if self._connector is not None and not self._connector.closed:
             await self._connector.close()
 
     async def __aenter__(self) -> "HttpRuntime":

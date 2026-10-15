@@ -35,6 +35,7 @@ class EngineRegistry:
     def __init__(self) -> None:
         self._engines: dict[str, Engine] = {}
         self._routes: list[RouteRule] = []
+        self.http_runtime = None
 
     def register(self, engine: Engine, routes: list[RouteRule] | tuple[RouteRule, ...]) -> None:
         if engine.engine_id in self._engines:
