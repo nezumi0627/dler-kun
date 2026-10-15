@@ -62,7 +62,12 @@ class GoFileEngine:
                 raw_children = data.get("children", {}) if isinstance(data, dict) else {}
                 raw_count = len(raw_children) if isinstance(raw_children, dict) else 0
                 has_next = pagination.get("hasNextPage") if isinstance(pagination, dict) else None
-                if not items or has_next is False or (isinstance(total_pages, int) and page >= total_pages) or raw_count < 1000:
+                if (
+                    not items
+                    or has_next is False
+                    or (isinstance(total_pages, int) and page >= total_pages)
+                    or (has_next is None and total_pages is None and raw_count < 1000)
+                ):
                     break
             else:
                 errors.append(EngineError(ErrorCode.CRAWL_FAILED, "GoFile pagination limit reached"))

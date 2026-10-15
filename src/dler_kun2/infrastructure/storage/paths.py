@@ -40,7 +40,11 @@ class OutputAllocator:
         parent.mkdir(parents=True, exist_ok=True)
         path = Path(name)
         stem, suffix = path.stem, path.suffix
-        identity = hashlib.sha256(plan.source_url.encode("utf-8")).hexdigest()
+        stable_id = plan.metadata.get("file_id")
+        identity_source = plan.source_url
+        if isinstance(stable_id, (str, int)) and str(stable_id):
+            identity_source = f"{identity_source}\0{stable_id}"
+        identity = hashlib.sha256(identity_source.encode("utf-8")).hexdigest()
         candidate = parent / f"{stem}-{identity}{suffix}"
         attempt = 0
         while True:

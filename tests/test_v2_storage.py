@@ -32,6 +32,15 @@ def test_allocator_disambiguates_casefold_and_url_identity(tmp_path):
     assert len({first.name.casefold(), second.name.casefold(), same.name.casefold()}) == 3
 
 
+def test_allocator_uses_item_identity_for_files_in_one_share(tmp_path):
+    source = "https://gofile.io/d/SHARE"
+    first = DownloadPlan("https://cdn.example/a", source, source, "video", "clip.mp4", None, {"file_id": "FILE_A"})
+    second = DownloadPlan("https://cdn.example/b", source, source, "video", "clip.mp4", None, {"file_id": "FILE_B"})
+    paths = [OutputAllocator().reserve(first, tmp_path), OutputAllocator().reserve(second, tmp_path)]
+    assert paths[0] != paths[1]
+    assert all(path.parent == tmp_path for path in paths)
+
+
 def test_allocator_reserves_existing_collision(tmp_path):
     (tmp_path / "clip.mp4").write_bytes(b"keep")
     path = OutputAllocator().reserve(plan("clip.mp4"), tmp_path)

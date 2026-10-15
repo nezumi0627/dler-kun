@@ -52,6 +52,28 @@ def test_nested_discovery_preserves_successes_and_unavailable_count():
     assert all("token" not in str(plan.to_dict()) for plan in result.plans)
 
 
+def test_explicit_pagination_flag_overrides_short_page_size():
+    pages = []
+
+    class Client:
+        async def content(self, content_id, *, password=None, page=1, page_size=1000):
+            pages.append(page)
+            item_id = f"FILE{page}"
+            return {
+                "status": "ok",
+                "data": {
+                    "type": "folder",
+                    "children": {item_id: {"id": item_id, "name": f"{item_id}.mp4", "type": "file", "link": f"https://cdn.test/{item_id}.mp4"}},
+                    "pagination": {"hasNextPage": page == 1, "pages": 2},
+                },
+            }
+
+    result = asyncio.run(GoFileEngine(Client()).resolve_many(DownloadRequest("https://gofile.io/d/ROOT")))
+    assert pages == [1, 2]
+    assert result.discovered == 2
+    assert len(result.plans) == 2
+
+
 def test_client_creates_and_reuses_one_persisted_guest_token(tmp_path):
     calls = []
 
