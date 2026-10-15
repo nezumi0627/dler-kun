@@ -51,7 +51,10 @@ def test_vendor_invocation_discovers_only_new_media_files(tmp_path: Path, monkey
         engine.run_vendor(DownloadRequest("https://example.invalid/x", {}), output)
     )
 
-    assert paths == (tmp_path / output / media,)
+    assert len(paths) == 1
+    assert paths[0].parent == (tmp_path / output)
+    assert paths[0].suffix == ".mp4"
+    assert paths[0].read_bytes() == b"media"
     assert not tuple((tmp_path / output).rglob("twimg.db"))
 
 
@@ -65,6 +68,42 @@ def test_missing_vendor_reports_dependency_missing(tmp_path: Path) -> None:
         assert getattr(exc, "code", None) is ErrorCode.DEPENDENCY_MISSING
     else:
         raise AssertionError("missing vendor must be reported")
+
+
+def test_vendor_outputs_with_identical_names_never_overwrite(tmp_path: Path) -> None:
+    script = tmp_path / "tool.py"
+    script.write_text("# test", encoding="utf-8")
+
+    class Process:
+        returncode: int | None = 0
+
+        async def communicate(self) -> tuple[bytes | None, bytes | None]:
+            for folder, name, content in (("a", "CLIP.mp4", b"first"), ("b", "clip.mp4", b"second")):
+                target = staging / folder / name
+                target.parent.mkdir(parents=True)
+                target.write_bytes(content)
+            return b"", b""
+
+        def terminate(self) -> None:
+            pass
+
+        async def wait(self) -> int:
+            return 0
+
+    async def runner(*command, **_kwargs):
+        nonlocal staging
+        staging = Path(command[command.index("-o") + 1])
+        return Process()
+
+    staging = tmp_path
+    output = tmp_path / "out"
+    engine = TwimgEngine(script_path=script, process_runner=runner)
+    request = DownloadRequest("https://example.invalid/clip")
+    first = asyncio.run(engine.run_vendor(request, output))
+    second = asyncio.run(engine.run_vendor(request, output))
+    assert len(first + second) == 4
+    assert len({path.name.casefold() for path in first + second}) == 4
+    assert sorted(path.read_bytes() for path in first + second) == [b"first", b"first", b"second", b"second"]
 
 
 def test_resolution_plan_redacts_signed_source_query() -> None:

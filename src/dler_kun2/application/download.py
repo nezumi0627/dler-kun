@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 from dler_kun2.domain.contracts import DownloadRequest
 from dler_kun2.domain.errors import EngineError, ErrorCode
@@ -17,12 +17,21 @@ class TransferService(Protocol):
     async def transfer(self, plan: DownloadPlan, output_dir: Path) -> Path: ...
 
 
+@runtime_checkable
+class VendorDownloader(Protocol):
+    async def run_vendor(self, request: DownloadRequest, output_dir: Path) -> tuple[Path, ...]: ...
+
+
 async def download(url: str, output_dir: Path, registry: EngineRegistry, transfer: TransferService | None = None, options: EngineOptions | None = None) -> DownloadResult:
     engine = registry.resolve(url)
     if not engine.capabilities.download:
         raise RouteError(EngineError(ErrorCode.UNSUPPORTED_CAPABILITY, "download is unsupported"))
+    request = DownloadRequest(url, options or {})
+    if isinstance(engine, VendorDownloader):
+        paths = await engine.run_vendor(request, output_dir)
+        return DownloadResult(output_paths=paths, requested=1, discovered=len(paths), completed=len(paths))
     if transfer is None:
         raise RouteError(EngineError(ErrorCode.DEPENDENCY_MISSING, "transfer service is pending"))
-    plan = await engine.resolve_download(DownloadRequest(url, options or {}))
+    plan = await engine.resolve_download(request)
     path = await transfer.transfer(plan, output_dir)
     return DownloadResult(output_paths=(path,), requested=1, discovered=1, completed=1)

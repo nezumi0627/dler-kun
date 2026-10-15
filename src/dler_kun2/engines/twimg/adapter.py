@@ -20,6 +20,7 @@ from dler_kun2.domain.contracts import (
 from dler_kun2.domain.errors import EngineError, ErrorCode
 from dler_kun2.domain.models import CrawlResult
 from dler_kun2.domain.plans import DownloadPlan
+from dler_kun2.infrastructure.storage.paths import OutputAllocator
 
 from .parser import suggested_filename
 
@@ -135,12 +136,20 @@ class TwimgEngine:
             if not staged_files:
                 raise EngineError(ErrorCode.DOWNLOAD_FAILED, "Twimg produced no media files")
             published: list[Path] = []
+            allocator = OutputAllocator()
             for source in staged_files:
                 relative = source.relative_to(staging_dir)
-                target = output_dir / relative
-                target.parent.mkdir(parents=True, exist_ok=True)
-                if target.exists():
-                    target = _available_name(target)
+                # Use the shared atomic reservation strategy for every vendor output.
+                # Nested paths and case-only collisions must not overwrite files.
+                item = DownloadPlan(
+                    media_url=request.url,
+                    source_url=f"{request.url}#{relative.as_posix()}",
+                    source_page=request.url,
+                    media_kind="external",
+                    suggested_name=source.name,
+                    size=source.stat().st_size,
+                )
+                target = allocator.reserve(item, output_dir)
                 shutil.move(str(source), target)
                 published.append(target)
             return tuple(published)
@@ -150,12 +159,3 @@ class TwimgEngine:
 
     async def ranking(self, request: CrawlRequest) -> CrawlResult:
         raise EngineError(ErrorCode.UNSUPPORTED_CAPABILITY, "Twimg does not support ranking")
-
-
-def _available_name(path: Path) -> Path:
-    index = 2
-    while True:
-        candidate = path.with_name(f"{path.stem} ({index}){path.suffix}")
-        if not candidate.exists():
-            return candidate
-        index += 1
