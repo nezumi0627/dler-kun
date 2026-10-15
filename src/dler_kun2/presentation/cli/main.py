@@ -53,7 +53,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="dler-kun2")
     parser.add_argument("--json", action="store_true", dest="global_json")
     commands = parser.add_subparsers(dest="command", required=True)
-    for name in ("detect", "sites", "download", "crawl", "ranking", "jobs", "cancel", "config"):
+    for name in ("detect", "sites", "help", "download", "crawl", "ranking", "jobs", "cancel", "config"):
         command = commands.add_parser(name)
         if name == "detect":
             command.add_argument("target")
@@ -99,6 +99,9 @@ def main(argv: list[str] | None = None) -> int:
         if name in {"crawl", "ranking"}:
             command.add_argument("--download", action="store_true")
     args = parser.parse_args(argv)
+    if args.command == "help":
+        parser.print_help()
+        return 0
     json_mode = args.global_json or args.json
     target = getattr(args, "service", getattr(args, "target", None))
     targets = tuple(target) if args.command == "download" else None

@@ -146,6 +146,13 @@ def test_cli_sites_json_reports_verified_engines(capsys):
     assert ids == {"85xo", "gofile", "gofilerun", "linkex", "mixixxx", "mvfile", "videy"}
 
 
+def test_cli_help_subcommand_prints_root_help_without_loading_config(capsys, monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "config.json").write_text("invalid", encoding="utf-8")
+    assert main(["help"]) == 0
+    assert "usage: dler-kun2" in capsys.readouterr().out
+
+
 def test_cli_download_accepts_multiple_urls(capsys, monkeypatch):
     captured = {}
 
