@@ -22,6 +22,11 @@ class VendorDownloader(Protocol):
     async def run_vendor(self, request: DownloadRequest, output_dir: Path) -> tuple[Path, ...]: ...
 
 
+@runtime_checkable
+class MultiPlanResolver(Protocol):
+    async def resolve_many(self, request: DownloadRequest): ...
+
+
 async def download(url: str, output_dir: Path, registry: EngineRegistry, transfer: TransferService | None = None, options: EngineOptions | None = None) -> DownloadResult:
     engine = registry.resolve(url)
     if not engine.capabilities.download:
@@ -32,6 +37,22 @@ async def download(url: str, output_dir: Path, registry: EngineRegistry, transfe
         return DownloadResult(output_paths=paths, requested=1, discovered=len(paths), completed=len(paths))
     if transfer is None:
         raise RouteError(EngineError(ErrorCode.DEPENDENCY_MISSING, "transfer service is pending"))
+    if isinstance(engine, MultiPlanResolver):
+        result = await engine.resolve_many(request)
+        paths: list[Path] = []
+        errors = list(result.errors)
+        for plan in result.plans:
+            try:
+                paths.append(await transfer.transfer(plan, output_dir))
+            except EngineError as exc:
+                errors.append(exc)
+            except Exception as exc:
+                from dler_kun2.infrastructure.http.client import HttpError
+
+                code = exc.code if isinstance(exc, HttpError) else ErrorCode.DOWNLOAD_FAILED
+                retry_after = exc.retry_after if isinstance(exc, HttpError) else None
+                errors.append(EngineError(code, "media transfer failed", retry_after))
+        return DownloadResult(output_paths=tuple(paths), requested=result.requested, discovered=result.discovered, completed=len(paths), unavailable=result.unavailable, errors=tuple(errors))
     plan = await engine.resolve_download(request)
     path = await transfer.transfer(plan, output_dir)
     return DownloadResult(output_paths=(path,), requested=1, discovered=1, completed=1)

@@ -75,7 +75,7 @@ def test_unsupported_capability_is_typed(tmp_path):
 def test_cli_sites_json_reports_verified_engines(capsys):
     assert main(["sites", "--json"]) == 0
     ids = {item["engine_id"] for item in json.loads(capsys.readouterr().out)["sites"]}
-    assert ids == {"85xo", "videy"}
+    assert ids == {"85xo", "linkex", "videy"}
 
 
 @pytest.mark.parametrize("command", ["detect", "download", "crawl", "ranking", "jobs", "cancel", "config"])
