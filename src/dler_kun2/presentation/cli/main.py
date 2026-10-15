@@ -83,7 +83,12 @@ def main(argv: list[str] | None = None) -> int:
             command.add_argument("--segment-concurrency", type=int)
             command.add_argument("--browser-path")
             command.add_argument("--ffmpeg-path")
-            command.add_argument("--timeout-seconds", type=float)
+            command.add_argument("--timeout-seconds", "--timeout", dest="timeout_seconds", type=float)
+        if name in {"download", "crawl", "ranking"}:
+            command.add_argument("--proxy")
+            command.add_argument("--user-agent")
+            command.add_argument("--cookie")
+            command.add_argument("--local-addr")
         if name == "config":
             command.add_argument("--save", action="store_true", help="Write the effective config.json")
         command.add_argument("--json", action="store_true")
@@ -104,6 +109,13 @@ def main(argv: list[str] | None = None) -> int:
     options = {name: value for name in option_names if (value := getattr(args, name, None)) not in (None, False)}
     try:
         config = ConfigStore().as_dict(redact=False)
+        for key in ("proxy", "user_agent", "cookie", "local_addr"):
+            override = getattr(args, key, None)
+            if override is not None:
+                config[key] = override
+        timeout_override = getattr(args, "timeout_seconds", None)
+        if timeout_override is not None:
+            config["timeout"] = timeout_override
         configured_output = config.get("output_dir", "downloads")
         output_dir = getattr(args, "output_dir", None) or Path(str(configured_output))
         registry = build_registry(EngineRegistry(), http=_runtime_from_config(config))

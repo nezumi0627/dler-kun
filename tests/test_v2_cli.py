@@ -235,6 +235,26 @@ def test_cli_applies_network_config_to_shared_http_runtime(tmp_path, monkeypatch
         "user_agent": "configured-agent",
         "local_addr": "127.0.0.1",
     }
+    assert main([
+        "download",
+        "https://sample.test/a",
+        "--timeout",
+        "12",
+        "--proxy",
+        "socks5://proxy.example:1080",
+        "--cookie",
+        "session=override",
+        "--user-agent",
+        "override-agent",
+        "--local-addr",
+        "127.0.0.2",
+        "--json",
+    ]) == 0
+    assert captured["total_timeout"] == captured["read_timeout"] == 12.0
+    assert captured["proxy"] == "socks5://proxy.example:1080"
+    assert captured["cookie"] == "session=override"
+    assert captured["user_agent"] == "override-agent"
+    assert captured["local_addr"] == "127.0.0.2"
     capsys.readouterr()
 
 
