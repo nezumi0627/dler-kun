@@ -8,6 +8,7 @@ from dler_kun2.domain.errors import EngineError, ErrorCode
 from dler_kun2.engines.gofile.adapter import GoFileEngine
 from dler_kun2.engines.gofile.client import GoFileClient
 from dler_kun2.engines.gofile.parser import content_id, parse_content
+from dler_kun2.engines.gofile.ranking import fetch_ids, normalize_sources
 from dler_kun2.engines.gofile.token_store import GuestTokenStore
 
 
@@ -109,4 +110,67 @@ def test_client_preserves_retry_after_and_does_not_retry(tmp_path):
     assert error.value.code is ErrorCode.RATE_LIMITED
     assert error.value.retry_after == 73
     assert len(calls) == 1
+
+
+def test_ranking_sources_normalize_and_dedupe():
+    assert normalize_sources(("new", "douga", "popular-24h")) == (
+        "https://gofile-douga.com/new",
+        "https://gofile-douga.com/",
+        "https://gofile-douga.com/?sort=24h",
+        "https://gofile-douga.com/?sort=3days",
+        "https://gofilelab.com/ja/popular-24h",
+    )
+
+
+def test_ranking_fetch_extracts_unique_ids_and_respects_lab_age_gate():
+    class Response:
+        async def json(self):
+            return {"items": [
+                {"gofileUrl": "https://gofile.io/d/First"},
+                {"gofileUrl": "https://gofile.io/d/First"},
+                {"gofileUrl": "https://elsewhere.test/d/ignored"},
+            ]}
+
+        async def text(self):
+            return "18歳以上 年齢確認"
+
+    class Http:
+        async def request(self, method, url, **kwargs):
+            self.url = url
+            return Response()
+
+    http = Http()
+    assert asyncio.run(fetch_ids(http, "https://gofile-douga.com/new")) == ("First",)
+    assert "api/new" in http.url
+    with pytest.raises(EngineError) as gate:
+        asyncio.run(fetch_ids(http, "https://gofilelab.com/ja/newest"))
+    assert gate.value.code is ErrorCode.AUTH_REQUIRED
+
+
+def test_engine_ranking_keeps_partial_success_when_lab_requires_age_verification():
+    class Response:
+        async def json(self):
+            return {"items": [{"gofileUrl": "https://gofile.io/d/ROOT"}]}
+
+        async def text(self):
+            return "18歳以上 年齢確認"
+
+    class Http:
+        async def request(self, method, url, **kwargs):
+            return Response()
+
+    class Client:
+        http = Http()
+
+        async def content(self, content_id, *, password=None, page=1, page_size=1000):
+            return {"status": "ok", "data": {"type": "file", "id": "ROOT", "name": "clip.mp4", "link": "https://cdn.test/clip.mp4"}}
+
+    from dler_kun2.domain.contracts import CrawlRequest
+
+    result = asyncio.run(GoFileEngine(Client()).ranking(CrawlRequest("gofile", (
+        "https://gofile-douga.com/new", "https://gofilelab.com/ja/newest"
+    ), None)))
+    assert len(result.plans) == 1
+    assert result.discovered == 1
+    assert result.errors[0].code is ErrorCode.AUTH_REQUIRED
 

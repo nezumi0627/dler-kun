@@ -115,7 +115,7 @@ def test_cli_does_not_claim_pending_download_works(capsys):
 @pytest.mark.parametrize(("command", "service"), [("crawl", "unknown-engine"), ("ranking", "gofile")])
 def test_crawl_and_ranking_accept_service_without_seed(command, service, capsys):
     assert main([command, service, "--json"]) == 2
-    expected = "unsupported_capability" if command == "ranking" else "unsupported_service"
+    expected = "invalid_request" if command == "ranking" else "unsupported_service"
     assert json.loads(capsys.readouterr().out)["error"]["code"] == expected
 
 

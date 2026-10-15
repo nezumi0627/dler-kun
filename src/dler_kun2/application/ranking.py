@@ -16,7 +16,10 @@ async def ranking(engine_id: str, seeds: tuple[str, ...], days: int | None, outp
     engine = registry.get(engine_id)
     if not engine.capabilities.ranking:
         raise RouteError(EngineError(ErrorCode.UNSUPPORTED_CAPABILITY, "ranking is unsupported"))
-    result = await engine.ranking(CrawlRequest(engine_id, seeds, days, options or {}))
+    try:
+        result = await engine.ranking(CrawlRequest(engine_id, seeds, days, options or {}))
+    except EngineError as exc:
+        raise RouteError(exc) from exc
     if not download_items:
         return result
     if transfer is None:

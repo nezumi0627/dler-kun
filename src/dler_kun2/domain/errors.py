@@ -21,7 +21,7 @@ class ErrorCode(str, Enum):
     AMBIGUOUS_SERVICE = "ambiguous_service"
 
 
-@dataclass(frozen=True)
+@dataclass(eq=False)
 class EngineError(Exception):
     code: ErrorCode
     message: str

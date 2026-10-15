@@ -37,6 +37,15 @@ def test_engine_error_rejects_non_finite_retry_delay() -> None:
             EngineError(ErrorCode.RATE_LIMITED, "try later", retry_after=delay)
 
 
+def test_engine_error_can_be_raised_and_caught():
+    error = EngineError(ErrorCode.INVALID_REQUEST, "bad request")
+    try:
+        raise error
+    except EngineError as caught:
+        assert caught is error
+        assert caught.__traceback__ is not None
+
+
 def test_plan_repr_and_public_serialization_hide_signed_media_url() -> None:
     secret = "https://cdn.example/movie.mp4?signature=private"
     plan = DownloadPlan(

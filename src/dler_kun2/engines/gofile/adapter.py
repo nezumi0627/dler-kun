@@ -20,7 +20,7 @@ class Api(Protocol):
 
 class GoFileEngine:
     engine_id = "gofile"
-    capabilities = EngineCapabilities(download=True, crawl=True)
+    capabilities = EngineCapabilities(download=True, crawl=True, ranking=True)
 
     def __init__(self, client: Api):
         self.client = client
@@ -93,4 +93,39 @@ class GoFileEngine:
         return CrawlResult(plans=tuple(p for result in results for p in result.plans), requested=len(request.seeds), discovered=sum(r.discovered for r in results), unavailable=sum(r.unavailable for r in results), errors=tuple(e for r in results for e in r.errors))
 
     async def ranking(self, request: CrawlRequest) -> CrawlResult:
-        raise EngineError(ErrorCode.UNSUPPORTED_CAPABILITY, "GoFile ranking sources are pending migration")
+        from .ranking import fetch_ids, normalize_sources
+
+        if not request.seeds:
+            raise EngineError(ErrorCode.INVALID_REQUEST, "provide one or more GoFile ranking source URLs")
+        plans: list[DownloadPlan] = []
+        errors: list[EngineError] = []
+        requested = discovered = unavailable = 0
+        seen: set[str] = set()
+        http = getattr(self.client, "http", None)
+        if http is None:
+            raise EngineError(ErrorCode.DEPENDENCY_MISSING, "GoFile ranking HTTP client is unavailable")
+        for seed in normalize_sources(request.seeds):
+            requested += 1
+            try:
+                ids = await fetch_ids(http, seed)
+            except EngineError as exc:
+                errors.append(exc)
+                continue
+            except Exception as exc:
+                from dler_kun2.infrastructure.http.client import HttpError
+
+                if isinstance(exc, HttpError):
+                    errors.append(EngineError(exc.code, "GoFile ranking request failed", exc.retry_after))
+                else:
+                    errors.append(EngineError(ErrorCode.NETWORK_ERROR, "GoFile ranking request failed"))
+                continue
+            for item_id in ids:
+                if item_id in seen:
+                    continue
+                seen.add(item_id)
+                result = await self._discover(f"https://gofile.io/d/{item_id}", None)
+                plans.extend(result.plans)
+                discovered += result.discovered
+                unavailable += result.unavailable
+                errors.extend(result.errors)
+        return CrawlResult(plans=tuple(plans), requested=requested, discovered=discovered, unavailable=unavailable, errors=tuple(errors))
