@@ -71,11 +71,11 @@ def _source(seed: str) -> tuple[str, str]:
     raise EngineError(ErrorCode.INVALID_REQUEST, "unsupported GoFile ranking source")
 
 
-def _ranking_url(source: str) -> str:
+def _ranking_url(source: str, limit: int) -> str:
     if source == "new":
-        return f"{DOUGA}/api/new?limit=60"
+        return f"{DOUGA}/api/new?limit={limit}"
     tab = {"home": "12h", "24h": "24h", "3days": "3d"}[source]
-    return f"{DOUGA}/api/rankings?tab={tab}&limit=60"
+    return f"{DOUGA}/api/rankings?tab={tab}&limit={limit}"
 
 
 def _gofile_ids(values: Iterable[object]) -> tuple[str, ...]:
@@ -91,16 +91,18 @@ def _gofile_ids(values: Iterable[object]) -> tuple[str, ...]:
     return tuple(found)
 
 
-async def fetch_ids(http, source_url: str) -> tuple[str, ...]:
+async def fetch_ids(http, source_url: str, *, limit: int = 60) -> tuple[str, ...]:
+    if not 1 <= limit <= 500:
+        raise EngineError(ErrorCode.INVALID_REQUEST, "GoFile ranking limit must be 1..500")
     kind, source = _source(source_url)
     if kind == "douga":
-        response = await http.request("GET", _ranking_url(source), headers={"Accept": "application/json", "Referer": f"{DOUGA}/"})
+        response = await http.request("GET", _ranking_url(source, limit), headers={"Accept": "application/json", "Referer": f"{DOUGA}/"})
         payload = await response.json()
         if not isinstance(payload, dict) or not isinstance(payload.get("items"), list):
             raise EngineError(ErrorCode.NETWORK_ERROR, "GoFile Douga returned malformed ranking data")
         if payload.get("status") not in (None, "ok", "success"):
             raise EngineError(ErrorCode.NETWORK_ERROR, "GoFile Douga rejected the ranking request")
-        return _gofile_ids(item.get("gofileUrl", "") for item in payload["items"] if isinstance(item, dict))
+        return _gofile_ids(item.get("gofileUrl", "") for item in payload["items"] if isinstance(item, dict))[:limit]
 
     response = await http.request("GET", LAB_PAGES[source], headers={"Accept": "text/html,application/xhtml+xml"})
     html = await response.text()
@@ -109,4 +111,4 @@ async def fetch_ids(http, source_url: str) -> tuple[str, ...]:
     ids = _gofile_ids((html,))
     if not ids:
         raise EngineError(ErrorCode.NETWORK_ERROR, "GoFile Lab ranking page contains no supported share links")
-    return ids
+    return ids[:limit]

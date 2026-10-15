@@ -99,11 +99,13 @@ def test_crawl_uses_engine_plan_downloader_for_browser_bound_media(tmp_path):
         async def crawl(self, request):
             return CrawlResult(plans=(DownloadPlan("https://player.example/embed", "https://mixi.test/", "https://mixi.test/1", "browser_hls", "clip.mp4", None),), requested=1, discovered=1)
 
-        async def download_plan(self, plan, output_dir):
+        async def download_plan(self, plan, output_dir, *, options=None):
             assert plan.media_kind == "browser_hls"
+            assert options is not None
+            assert options["browser_path"] == "browser.exe"
             return output_dir / plan.suggested_name
 
-    result = asyncio.run(crawl("sample", (), None, tmp_path, registry(BrowserEngine()), Transfer(), download_items=True))
+    result = asyncio.run(crawl("sample", (), None, tmp_path, registry(BrowserEngine()), Transfer(), download_items=True, options={"browser_path": "browser.exe"}))
     assert result.completed == 1
     assert result.output_paths == (tmp_path / "clip.mp4",)
 
@@ -125,16 +127,36 @@ def test_cli_download_accepts_multiple_urls(capsys, monkeypatch):
     captured = {}
 
     def run(command, target, _registry, **kwargs):
-        captured.update(command=command, target=target, targets=kwargs["targets"], parallel_urls=kwargs["parallel_urls"])
+        captured.update(command=command, target=target, targets=kwargs["targets"], parallel_urls=kwargs["parallel_urls"], options=kwargs["options"])
         return {"accepted": list(kwargs["targets"])}
 
     monkeypatch.setattr("dler_kun2.presentation.cli.main.run_command", run)
-    assert main(["download", "https://sample.test/a", "https://sample.test/b", "--parallel-urls", "2", "--json"]) == 0
+    assert main(["download", "https://sample.test/a", "https://sample.test/b", "--parallel-urls", "2", "--password", "pass", "--json"]) == 0
     assert captured["command"] == "download"
     assert captured["target"] == "https://sample.test/a"
     assert captured["targets"] == ("https://sample.test/a", "https://sample.test/b")
     assert captured["parallel_urls"] == 2
+    assert captured["options"] == {"password": "pass"}
     assert json.loads(capsys.readouterr().out)["accepted"] == list(captured["targets"])
+
+
+def test_cli_forwards_supported_crawl_options_and_sources(capsys, monkeypatch):
+    captured = {}
+
+    def run(command, target, _registry, **kwargs):
+        captured.update(command=command, target=target, seeds=kwargs["seeds"], options=kwargs["options"])
+        return {"accepted": True}
+
+    monkeypatch.setattr("dler_kun2.presentation.cli.main.run_command", run)
+    args = ["crawl", "85xo", "--source", "top-rated", "--max-pages", "12", "--limit", "30", "--resolve-workers", "3", "--json"]
+    assert main(args) == 0
+    assert captured == {
+        "command": "crawl",
+        "target": "85xo",
+        "seeds": ("top-rated",),
+        "options": {"max_pages": 12, "limit": 30, "resolve_workers": 3},
+    }
+    assert json.loads(capsys.readouterr().out)["accepted"] is True
 
 
 @pytest.mark.parametrize("command", ["detect", "download", "crawl", "ranking", "jobs", "cancel", "config"])

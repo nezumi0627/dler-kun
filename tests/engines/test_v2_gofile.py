@@ -235,8 +235,9 @@ def test_ranking_fetch_extracts_unique_ids_and_respects_lab_age_gate():
             return Response()
 
     http = Http()
-    assert asyncio.run(fetch_ids(http, "https://gofile-douga.com/new")) == ("First",)
+    assert asyncio.run(fetch_ids(http, "https://gofile-douga.com/new", limit=17)) == ("First",)
     assert "api/new" in http.url
+    assert "limit=17" in http.url
     with pytest.raises(EngineError) as gate:
         asyncio.run(fetch_ids(http, "https://gofilelab.com/ja/newest"))
     assert gate.value.code is ErrorCode.AUTH_REQUIRED

@@ -108,13 +108,14 @@ class GoFileEngine:
         errors: list[EngineError] = []
         requested = discovered = unavailable = 0
         seen: set[str] = set()
+        limit = int(request.options.get("limit", 60))
         http = getattr(self.client, "http", None)
         if http is None:
             raise EngineError(ErrorCode.DEPENDENCY_MISSING, "GoFile ranking HTTP client is unavailable")
         for seed in normalize_sources(request.seeds):
             requested += 1
             try:
-                ids = await fetch_ids(http, seed)
+                ids = await fetch_ids(http, seed, limit=limit)
             except EngineError as exc:
                 errors.append(exc)
                 continue

@@ -9,6 +9,7 @@ from dler_kun2.application.crawl import crawl
 from dler_kun2.application.download import download, download_many
 from dler_kun2.application.ranking import ranking
 from dler_kun2.domain.errors import EngineError, ErrorCode
+from dler_kun2.domain.types import EngineOptions
 from dler_kun2.infrastructure.state.config import ConfigStore
 from dler_kun2.infrastructure.state.jobs import JobStore
 from dler_kun2.infrastructure.state.paths import state_dir
@@ -16,7 +17,7 @@ from dler_kun2.infrastructure.storage.transfer import TransferService
 from dler_kun2.routing.registry import EngineRegistry, RouteError
 
 
-def run_command(command: str, target: str | None, registry: EngineRegistry, *, output_dir: Path, download_items: bool = False, seeds: tuple[str, ...] = (), days: int | None = None, save_config: bool = False, cancel_all: bool = False, targets: tuple[str, ...] | None = None, parallel_urls: int = 4) -> object:
+def run_command(command: str, target: str | None, registry: EngineRegistry, *, output_dir: Path, download_items: bool = False, seeds: tuple[str, ...] = (), days: int | None = None, save_config: bool = False, cancel_all: bool = False, targets: tuple[str, ...] | None = None, parallel_urls: int = 4, options: EngineOptions | None = None) -> object:
     runtime = registry.http_runtime
 
     def execute(coroutine, kind: str):
@@ -86,11 +87,11 @@ def run_command(command: str, target: str | None, registry: EngineRegistry, *, o
         urls = targets or ((target,) if target is not None else ())
         if not urls:
             raise RouteError(EngineError(ErrorCode.INVALID_REQUEST, "URL is required"))
-        operation = download_many(urls, output_dir, registry, transfer, concurrency=parallel_urls) if len(urls) > 1 else download(urls[0], output_dir, registry, transfer)
+        operation = download_many(urls, output_dir, registry, transfer, options, concurrency=parallel_urls) if len(urls) > 1 else download(urls[0], output_dir, registry, transfer, options)
         return execute(operation, "download")
     if command in {"crawl", "ranking"}:
         if target is None:
             raise RouteError(EngineError(ErrorCode.INVALID_REQUEST, "service is required"))
         use_case = crawl if command == "crawl" else ranking
-        return execute(use_case(target, seeds, days, output_dir, registry, transfer, download_items=download_items), command)
+        return execute(use_case(target, seeds, days, output_dir, registry, transfer, download_items=download_items, options=options), command)
     raise RouteError(EngineError(ErrorCode.INVALID_REQUEST, "unknown command"))

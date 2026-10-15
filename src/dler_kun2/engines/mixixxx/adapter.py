@@ -13,6 +13,7 @@ from dler_kun2.domain.contracts import CrawlRequest, DownloadRequest, EngineCapa
 from dler_kun2.domain.errors import EngineError, ErrorCode
 from dler_kun2.domain.models import CrawlResult
 from dler_kun2.domain.plans import DownloadPlan
+from dler_kun2.domain.types import EngineOptions
 from dler_kun2.infrastructure.storage.paths import OutputAllocator
 
 from .browser import BrowserCaptureError, BrowserHlsDownloader
@@ -73,7 +74,12 @@ class MixixxxEngine:
     async def resolve_download(self, request: DownloadRequest) -> DownloadPlan:
         return await self._resolve_page(request.url)
 
-    async def download_plan(self, plan: DownloadPlan, output_dir: Path, *, segment_concurrency: int = 4, browser_path: str | None = None, ffmpeg_path: str | None = None, timeout: float = 60) -> Path:
+    async def download_plan(self, plan: DownloadPlan, output_dir: Path, *, options: EngineOptions | None = None, segment_concurrency: int | None = None, browser_path: str | None = None, ffmpeg_path: str | None = None, timeout: float | None = None) -> Path:
+        options = options or {}
+        segment_concurrency = segment_concurrency if segment_concurrency is not None else int(options.get("segment_concurrency", 4))
+        browser_path = browser_path or str(options.get("browser_path") or "") or None
+        ffmpeg_path = ffmpeg_path or str(options.get("ffmpeg_path") or "") or None
+        timeout = timeout if timeout is not None else float(options.get("timeout_seconds", 60.0))
         output = OutputAllocator().reserve(plan, output_dir)
         descriptor, staging_name = tempfile.mkstemp(prefix=".mixi-stage-", suffix=".mp4", dir=output.parent)
         os.close(descriptor)
@@ -117,10 +123,7 @@ class MixixxxEngine:
         path = await self.download_plan(
             plan,
             output_dir,
-            segment_concurrency=int(request.options.get("segment_concurrency", 4)),
-            browser_path=str(request.options.get("browser_path") or "") or None,
-            ffmpeg_path=str(request.options.get("ffmpeg_path") or "") or None,
-            timeout=float(request.options.get("timeout_seconds", 60.0)),
+            options=request.options,
         )
         return (path,)
 

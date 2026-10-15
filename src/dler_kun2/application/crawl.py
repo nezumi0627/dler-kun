@@ -27,7 +27,7 @@ async def crawl(engine_id: str, seeds: tuple[str, ...], days: int | None, output
     for plan in result.plans:
         try:
             if callable(download_plan):
-                paths.append(await download_plan(plan, output_dir))
+                paths.append(await download_plan(plan, output_dir, options=options or {}))
             else:
                 paths.append(await transfer.transfer(plan, output_dir))
         except EngineError as exc:
