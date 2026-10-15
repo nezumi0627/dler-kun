@@ -21,6 +21,7 @@ dev = [
 
 [project.scripts]
 dler-kun = "dler_kun.__main__:main"
+dler-kun2 = "dler_kun2.presentation.cli.main:main"
 
 [build-system]
 requires = ["hatchling"]
