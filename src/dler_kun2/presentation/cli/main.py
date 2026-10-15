@@ -18,8 +18,11 @@ def main(argv: list[str] | None = None) -> int:
     commands = parser.add_subparsers(dest="command", required=True)
     for name in ("detect", "sites", "download", "crawl", "ranking", "jobs", "cancel", "config"):
         command = commands.add_parser(name)
-        if name in {"detect", "download", "cancel"}:
+        if name in {"detect", "download"}:
             command.add_argument("target")
+        if name == "cancel":
+            command.add_argument("target", nargs="?")
+            command.add_argument("--all", action="store_true")
         if name in {"crawl", "ranking"}:
             command.add_argument("service")
             command.add_argument("--seed", action="append", default=[])
@@ -35,7 +38,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     json_mode = args.global_json or args.json
     try:
-        value = run_command(args.command, getattr(args, "service", getattr(args, "target", None)), build_registry(EngineRegistry()), output_dir=getattr(args, "output_dir", Path("downloads")), download_items=getattr(args, "download", False), seeds=tuple(getattr(args, "seed", ())), days=getattr(args, "days", None), save_config=getattr(args, "save", False))
+        value = run_command(args.command, getattr(args, "service", getattr(args, "target", None)), build_registry(EngineRegistry()), output_dir=getattr(args, "output_dir", Path("downloads")), download_items=getattr(args, "download", False), seeds=tuple(getattr(args, "seed", ())), days=getattr(args, "days", None), save_config=getattr(args, "save", False), cancel_all=getattr(args, "all", False))
     except RouteError as exc:
         value = exc.error
     except EngineError as exc:

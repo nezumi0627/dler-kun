@@ -10,6 +10,7 @@ from dler_kun2.domain.contracts import EngineCapabilities
 from dler_kun2.domain.errors import ErrorCode
 from dler_kun2.domain.models import CrawlResult
 from dler_kun2.domain.plans import DownloadPlan
+from dler_kun2.infrastructure.state.jobs import JobStore
 from dler_kun2.presentation.cli.commands import run_command
 from dler_kun2.presentation.cli.main import main
 from dler_kun2.presentation.cli.output import emit
@@ -147,3 +148,16 @@ def test_text_output_is_concise_and_redacted(capsys):
     assert "plans" not in output
     assert "metadata" not in output
     assert SECRET not in output
+
+
+def test_cli_jobs_and_cancel_use_persistent_state_store(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("DLER_KUN2_DATA_DIR", str(tmp_path))
+    store = JobStore(tmp_path / "jobs.sqlite3")
+    job_id = store.create("download")
+
+    assert main(["jobs", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["jobs"][0]["id"] == job_id
+    assert main(["cancel", job_id, "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["cancel_requested"] is True
+    assert main(["cancel", "--all", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["cancelled"] == 0

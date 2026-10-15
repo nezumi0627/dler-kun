@@ -55,3 +55,30 @@ def test_each_sqlite_operation_closes_its_connection(tmp_path, monkeypatch):
     store.cancel(job_id)
     assert opened
     assert all(connection.closed for connection in opened)
+
+
+def test_job_listing_and_cancel_all_preserve_terminal_state(tmp_path):
+    store = JobStore(tmp_path / "jobs.sqlite3")
+    queued = store.create("download")
+    running = store.create("crawl")
+    completed = store.create("ranking")
+    assert store.transition(running, "running")
+    assert store.transition(completed, "running")
+    assert store.transition(completed, "succeeded")
+    assert store.cancel_all() == (queued, running)
+    assert store.is_cancelled(queued)
+    assert store.is_cancelled(running)
+    assert store.get(completed).cancel_requested is False
+    assert [job.id for job in store.list()] == [completed, running, queued]
+
+
+def test_job_transitions_reject_skips_and_invalid_status(tmp_path):
+    store = JobStore(tmp_path / "jobs.sqlite3")
+    job_id = store.create("download")
+    assert store.transition(job_id, "succeeded") is False
+    try:
+        store.transition(job_id, "unknown")
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("invalid job state was accepted")

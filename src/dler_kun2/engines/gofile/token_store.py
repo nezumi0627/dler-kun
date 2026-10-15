@@ -7,14 +7,7 @@ import os
 import tempfile
 from pathlib import Path
 
-
-def state_dir() -> Path:
-    override = os.environ.get("DLER_KUN2_DATA_DIR")
-    if override:
-        return Path(override).expanduser()
-    if os.name == "nt":
-        return Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming")) / "dler-kun2"
-    return Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share")) / "dler-kun2"
+from dler_kun2.infrastructure.state.paths import state_dir
 
 
 class GuestTokenStore:

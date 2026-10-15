@@ -31,6 +31,15 @@ def emit(value: object, *, json_mode: bool) -> None:
         print("[INFO] No engines registered (migration pending)" if not sites else f"[INFO] {len(sites)} engine(s) registered")
     elif isinstance(value, dict) and "engine_id" in value:
         print(f"[SUCCESS] {value['engine_id']}")
+    elif isinstance(value, dict) and "jobs" in value:
+        print(f"[INFO] {len(value['jobs'])} job(s)")
+    elif isinstance(value, dict) and "cancel_requested" in value:
+        label = "requested" if value["cancel_requested"] else "not changed"
+        print(f"[INFO] cancellation {label}: {value['job_id']}")
+    elif isinstance(value, dict) and "cancelled" in value:
+        print(f"[INFO] cancellation requested for {value['cancelled']} job(s)")
+    elif isinstance(value, dict) and "config" in value:
+        print("[SUCCESS] configuration saved" if value["saved"] else "[INFO] effective configuration")
     elif isinstance(value, (CrawlResult, DownloadResult)):
         print(f"[INFO] discovered {value.discovered}, completed {value.completed}, unavailable {value.unavailable}, errors {len(value.errors)}")
     else:
