@@ -441,17 +441,56 @@ class QueueManager:
             job = self._jobs.get(job_id)
             if not job:
                 return None
+            if job.status in {
+                JobStatus.SUCCESS,
+                JobStatus.FAILED,
+                JobStatus.SKIPPED,
+                JobStatus.UNSUPPORTED,
+                JobStatus.CANCELLED,
+            }:
+                return job
             for key, value in changes.items():
                 if hasattr(job, key):
                     setattr(job, key, value)
             job.updated_at = utc_now()
             return job
 
+    def finish(self, job_id: str, status: JobStatus, **changes: Any) -> bool:
+        """Atomically finish an active job unless cancellation already won."""
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if not job or job.status in {
+                JobStatus.SUCCESS,
+                JobStatus.FAILED,
+                JobStatus.SKIPPED,
+                JobStatus.UNSUPPORTED,
+                JobStatus.CANCELLED,
+            }:
+                return False
+            if job_id in self._cancelled:
+                return False
+            for key, value in changes.items():
+                if hasattr(job, key):
+                    setattr(job, key, value)
+            job.status = status
+            if status == JobStatus.CANCELLED:
+                self._cancelled.add(job_id)
+            job.updated_at = utc_now()
+            return True
+
     def cancel(self, job_id: str) -> QueueJob | None:
         with self._lock:
             job = self._jobs.get(job_id)
             if not job:
                 return None
+            if job.status in {
+                JobStatus.SUCCESS,
+                JobStatus.FAILED,
+                JobStatus.SKIPPED,
+                JobStatus.UNSUPPORTED,
+                JobStatus.CANCELLED,
+            }:
+                return job
             self._cancelled.add(job_id)
             job.status = JobStatus.CANCELLED
             job.error = "cancelled"

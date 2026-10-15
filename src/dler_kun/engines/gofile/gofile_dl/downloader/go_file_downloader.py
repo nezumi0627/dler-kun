@@ -82,6 +82,9 @@ class GoFileDownloader:
         content_data: dict[str, Any],
         parent_path: str = "",
     ) -> list[dict[str, Any]]:
+        api = self._api
+        if api is None:
+            raise RuntimeError("GoFileDownloader.init() must be called first")
         if content_data["type"] == "file":
             return [
                 {
@@ -111,7 +114,7 @@ class GoFileDownloader:
 
             async def _fetch_sub(child):
                 async with sem:
-                    data = await self._api.fetch_content(child["id"])
+                    data = await api.fetch_content(child["id"])
                     return await self._extract_files(data, folder_path) if data else []
 
             results = await asyncio.gather(
@@ -130,6 +133,10 @@ class GoFileDownloader:
         password: str | None = None,
         output_dir: str | None = None,
     ) -> dict[str, Any]:
+        downloader = self._downloader
+        api = self._api
+        if downloader is None or api is None:
+            raise RuntimeError("GoFileDownloader.init() must be called first")
         result: dict[str, Any] = {
             "status": "success",
             "message": "",
@@ -154,7 +161,7 @@ class GoFileDownloader:
                 highlight=False,
             )
             try:
-                content_data = await self._api.fetch_content(content_id, password)
+                content_data = await api.fetch_content(content_id, password)
             except FileNotFoundError as e:
                 result["status"] = "not_found"
                 result["message"] = str(e)
@@ -195,7 +202,7 @@ class GoFileDownloader:
 
             # ファイルバー（常に最大 12 行を固定表示、古い行は消える）
             file_progress = _make_progress()
-            self._downloader._progress = file_progress
+            downloader._progress = file_progress
 
             def _layout() -> Table:
                 grid = Table.grid(padding=0)
@@ -225,7 +232,7 @@ class GoFileDownloader:
                 nonlocal done
                 async with sem:
                     dest = content_id_dir / file_info["name"]
-                    res = await self._downloader.download_file(
+                    res = await downloader.download_file(
                         file_info["link"],
                         dest,
                         expected_size=file_info.get("size") or 0,

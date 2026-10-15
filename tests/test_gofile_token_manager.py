@@ -25,7 +25,7 @@ def test_get_valid_token_returns_none_when_no_active_tokens(monkeypatch) -> None
     assert asyncio.run(manager.get_valid_token()) is None
 
 
-def test_retry_after_is_bounded() -> None:
+def test_retry_after_preserves_server_requested_wait() -> None:
     assert _retry_after_seconds({"Retry-After": "5"}) == 5
-    assert _retry_after_seconds({"Retry-After": "9999"}) == 120
+    assert _retry_after_seconds({"Retry-After": "9999"}) == 9999
     assert _retry_after_seconds({"Retry-After": "invalid"}) == 10

@@ -54,7 +54,26 @@ CURRENT_DATE_RE = re.compile(
 CURRENT_DURATION_RE = re.compile(
     r'class="duration"[^>]*>\s*(?P<duration>[^<]+)', re.I
 )
-VIDEO_PAGE_ID_RE = re.compile(r"/(?:v|video)/(?P<id>\d+)/")
+DROP_CARD_RE = re.compile(
+    r'<a\b(?=[^>]*\bclass="[^"]*\bdrop-card\b)[^>]*>.*?</a>', re.S | re.I
+)
+DROP_HREF_RE = re.compile(r'\bhref="(?P<href>[^"]+)"', re.I)
+DROP_TITLE_RE = re.compile(
+    r'<div\b[^>]*class="[^"]*\bcard-title\b[^"]*"[^>]*>(?P<title>.*?)</div>',
+    re.S | re.I,
+)
+DROP_DATE_RE = re.compile(
+    r'icon-calendar.*?class="[^"]*\btools-text\b[^"]*"[^>]*>(?P<date>.*?)</',
+    re.S | re.I,
+)
+VIDEO_ANCHOR_RE = re.compile(
+    r'<a\b[^>]*href="(?P<href>[^"]+)"[^>]*>(?P<body>.*?)</a>', re.S | re.I
+)
+VIDEO_TITLE_RE = re.compile(
+    r'<(?:strong|div)\b[^>]*class="[^"]*\b(?:title|card-title)\b[^"]*"[^>]*>(?P<title>.*?)</(?:strong|div)>',
+    re.S | re.I,
+)
+VIDEO_PAGE_ID_RE = re.compile(r"/(?:v|video)/(?P<id>\d+)(?:\.html)?(?:/|$)")
 DURATION_RE = re.compile(
     r'<div class="time"><span[^>]*></span>\s*(?P<duration>[^<]+)</div>', re.S
 )
@@ -95,6 +114,7 @@ def crawl_fast(
     fetcher: Callable[[str, float], str] | None = None,
     stop_event: threading.Event | None = None,
     resolve_cache: Any = None,
+    errors: list[str] | None = None,
 ) -> list[FastMediaItem]:
     fetcher = fetcher or fetch_html
     now = now or datetime.now(timezone.utc)
@@ -108,6 +128,7 @@ def crawl_fast(
         include_undated,
         workers=discover_workers,
         stop_event=stop_event,
+        errors=errors,
     )
     return resolve_media_items(
         candidates,
@@ -116,6 +137,7 @@ def crawl_fast(
         resolve_workers,
         stop_event,
         resolve_cache,
+        errors,
     )
 
 
@@ -126,6 +148,7 @@ def resolve_media_items(
     resolve_workers: int,
     stop_event: threading.Event | None = None,
     resolve_cache: Any = None,
+    errors: list[str] | None = None,
 ) -> list[FastMediaItem]:
     resolved: dict[int, FastMediaItem] = {}
     max_workers = max(1, resolve_workers)
@@ -140,12 +163,19 @@ def resolve_media_items(
                 fetcher,
                 stop_event,
                 resolve_cache,
+                errors,
             ): index
             for index, candidate in enumerate(candidates, start=1)
         }
         for future in as_completed(futures):
             index = futures[future]
-            item = future.result()
+            try:
+                item = future.result()
+            except Exception as exc:  # noqa: BLE001 - isolate a failed page.
+                print(f"[warn] video page resolution failed ({exc})")
+                if errors is not None:
+                    errors.append("network_error")
+                continue
             if item is not None:
                 resolved[index] = item
     return [resolved[index] for index in sorted(resolved)]
@@ -159,6 +189,7 @@ def resolve_media_item(
     fetcher: Callable[[str, float], str],
     stop_event: threading.Event | None = None,
     resolve_cache: Any = None,
+    errors: list[str] | None = None,
 ) -> FastMediaItem | None:
     if stop_event is not None and stop_event.is_set():
         return None
@@ -177,10 +208,14 @@ def resolve_media_item(
         video_html = fetcher(candidate.page_url, timeout_seconds)
     except OSError as exc:
         print(f"[warn] video page fetch failed: {candidate.page_url} ({exc})")
+        if errors is not None:
+            errors.append("network_error")
         return None
     media_url = select_best_media_url(video_html)
     if not media_url:
         print(f"[warn] media url not found: {candidate.page_url}")
+        if errors is not None:
+            errors.append("not_found")
         return None
     if resolve_cache is not None:
         resolve_cache.set(cache_key, media_url)
@@ -203,6 +238,7 @@ def discover_listing_items(
     include_undated: bool = False,
     workers: int = 6,
     stop_event: threading.Event | None = None,
+    errors: list[str] | None = None,
 ) -> list[FastListingItem]:
     results: list[FastListingItem] = []
     seen_video_ids: set[str] = set()
@@ -211,6 +247,7 @@ def discover_listing_items(
         if stop_event is not None and stop_event.is_set():
             break
         old_pages = 0
+        previous_page_number: int | None = None
         page_numbers = list(range(1, max(1, max_pages) + 1))
         for start in range(0, len(page_numbers), max_workers):
             if stop_event is not None and stop_event.is_set():
@@ -225,9 +262,15 @@ def discover_listing_items(
                 fetcher,
                 include_undated,
                 stop_event,
+                errors,
             )
             broke = False
             for page_number in sorted(scanned):
+                if (
+                    previous_page_number is not None
+                    and page_number != previous_page_number + 1
+                ):
+                    old_pages = 0
                 items, within = scanned[page_number]
                 for item in within:
                     video_id = video_page_key(item.page_url)
@@ -242,6 +285,7 @@ def discover_listing_items(
                         break
                 else:
                     old_pages = 0
+                previous_page_number = page_number
             if broke:
                 break
     return results
@@ -256,6 +300,7 @@ def _scan_pages_batch(
     fetcher: Callable[[str, float], str],
     include_undated: bool,
     stop_event: threading.Event | None = None,
+    errors: list[str] | None = None,
 ) -> dict[int, tuple[list[FastListingItem], list[FastListingItem]]]:
     scanned: dict[int, tuple[list[FastListingItem], list[FastListingItem]]] = {}
     with ThreadPoolExecutor(max_workers=max(1, len(page_numbers))) as executor:
@@ -274,7 +319,13 @@ def _scan_pages_batch(
             for page_number in page_numbers
         }
         for future in as_completed(futures):
-            scanned[futures[future]] = future.result()
+            page_number = futures[future]
+            try:
+                scanned[page_number] = future.result()
+            except Exception as exc:  # noqa: BLE001
+                print(f"[warn] listing page {page_number} failed: {exc}")
+                if errors is not None:
+                    errors.append("network_error")
     return scanned
 
 
@@ -332,6 +383,61 @@ def parse_listing_items(
                 or None,
             )
         )
+    anchors = list(VIDEO_ANCHOR_RE.finditer(html))
+    has_dated_listing = any(
+        VIDEO_PAGE_ID_RE.search(match.group("href"))
+        and CURRENT_DATE_RE.search(match.group("body"))
+        for match in anchors
+    )
+    if not has_dated_listing:
+        for card in DROP_CARD_RE.findall(html):
+            href = match_group(DROP_HREF_RE, card, "href")
+            if not href:
+                continue
+            title_html = match_group(DROP_TITLE_RE, card, "title") or ""
+            title = unescape(re.sub(r"<[^>]+>", " ", title_html))
+            date_html = match_group(DROP_DATE_RE, card, "date") or ""
+            date_text = unescape(re.sub(r"<[^>]+>", " ", date_html))
+            items.append(
+                FastListingItem(
+                    page_url=urljoin(base_url, href),
+                    title=" ".join(title.split()),
+                    published_at=parse_published_at(date_text, now),
+                    thumbnail_url=match_group(THUMB_RE, card, "thumb"),
+                    duration=" ".join(
+                        (match_group(CURRENT_DURATION_RE, card, "duration") or "").split()
+                    )
+                    or None,
+                )
+            )
+    known_urls = {item.page_url for item in items}
+    for match in anchors:
+        href = unescape(match.group("href"))
+        if not VIDEO_PAGE_ID_RE.search(href):
+            continue
+        if has_dated_listing and not CURRENT_DATE_RE.search(match.group("body")):
+            continue
+        page_url = urljoin(base_url, href)
+        if page_url in known_urls:
+            continue
+        body = match.group("body")
+        title_html = match_group(VIDEO_TITLE_RE, body, "title") or ""
+        title = unescape(re.sub(r"<[^>]+>", " ", title_html))
+        date_html = match_group(CURRENT_DATE_RE, body, "date")
+        date_text = unescape(date_html or "")
+        items.append(
+            FastListingItem(
+                page_url=page_url,
+                title=" ".join(title.split()),
+                published_at=parse_published_at(date_text, now),
+                thumbnail_url=match_group(THUMB_RE, body, "thumb"),
+                duration=" ".join(
+                    (match_group(CURRENT_DURATION_RE, body, "duration") or "").split()
+                )
+                or None,
+            )
+        )
+        known_urls.add(page_url)
     return items
 
 

@@ -397,16 +397,17 @@ class MixiSession:
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         tmp_dir = Path(tempfile.mkdtemp(prefix="mixi-segs-"))
-        written = 0
+        written: list[Path] = []
         try:
             segment_urls = [urljoin(m3u8, segment) for segment in segments]
             fetched = self._load_resource_many(segment_urls, segment_concurrency)
             for index, url in enumerate(segment_urls):
                 segment_status, data = fetched.get(url, (None, b""))
                 if segment_status == 200 and data:
-                    with (tmp_dir / f"seg{index:05d}.ts").open("wb") as file:
+                    segment_path = tmp_dir / f"seg{index:05d}.ts"
+                    with segment_path.open("wb") as file:
                         file.write(data)
-                    written += 1
+                    written.append(segment_path)
                 if on_progress:
                     on_progress(
                         {
@@ -415,13 +416,11 @@ class MixiSession:
                             "progress": round((index + 1) / len(segments) * 100, 1),
                         }
                     )
-            if written == 0:
+            if not written:
                 return None
             list_file = tmp_dir / "list.txt"
             list_file.write_text(
-                "\n".join(
-                    f"file '{tmp_dir / f'seg{i:05d}.ts'}'" for i in range(written)
-                ),
+                "\n".join(f"file '{path}'" for path in written),
                 encoding="utf-8",
             )
             completed = subprocess.run(

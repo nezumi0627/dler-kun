@@ -61,6 +61,7 @@ class ServiceDetector:
                     "gofile.video",
                     "gofile.trade",
                     "gofile.bar",
+                    "gofile.pl",
                 ),
             ),
             DetectionRule(
@@ -73,7 +74,9 @@ class ServiceDetector:
                 ),
                 exact=True,
             ),
-            DetectionRule("videy", ("video.twimg.news", "videy.co")),
+            DetectionRule(
+                "videy", ("video.twimg.news", "video.twimg.it.com", "videy.co")
+            ),
             DetectionRule("mixixxx", ("mixi-xxx.cc",)),
             DetectionRule("linkex", ("l2e.click",)),
         ]

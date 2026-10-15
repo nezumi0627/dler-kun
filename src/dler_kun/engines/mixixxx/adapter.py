@@ -81,6 +81,14 @@ class MixixxxEngine(IDownloader):
                 metadata={"embed_url": embed_url},
             )
         except Exception as exc:  # noqa: BLE001 - adapter normalizes engine failures.
+            if isinstance(exc, OSError) and "ffmpeg not found" in str(exc):
+                return DownloadResult(
+                    job_id=request.job_id,
+                    engine_id=self.engine_id,
+                    status=JobStatus.FAILED,
+                    message=f"mixi-xxx download failed: {exc}",
+                    errors=["dependency_missing"],
+                )
             return DownloadResult(
                 job_id=request.job_id,
                 engine_id=self.engine_id,
@@ -183,7 +191,7 @@ class MixixxxEngine(IDownloader):
                     thread.start()
                 for thread in threads:
                     thread.join()
-            if request.download and files and len(files) < len(pages):
+            if request.download and len(files) < len(pages):
                 status = JobStatus.FAILED
                 errors.append("download_failed")
             return CrawlResult(

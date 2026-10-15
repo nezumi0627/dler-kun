@@ -1,5 +1,6 @@
 import json
 import os
+from typing import Any
 
 
 class TokenFileManager:
@@ -8,7 +9,7 @@ class TokenFileManager:
     def __init__(self, token_file: str = os.getenv("TOKEN_FILE_PATH", "tokens.json")):
         self.token_file_path = token_file
 
-    def load_tokens(self) -> list[dict[str, str]]:
+    def load_tokens(self) -> list[dict[str, Any]]:
         """tokens.json からトークンリストを読み込む"""
         try:
             with open(self.token_file_path) as f:
@@ -17,7 +18,7 @@ class TokenFileManager:
         except (FileNotFoundError, json.JSONDecodeError):
             return []
 
-    async def save_tokens(self, tokens: list[dict[str, str]]) -> None:
+    async def save_tokens(self, tokens: list[dict[str, Any]]) -> None:
         """トークンリストを tokens.json に保存"""
         data = {"tokens": tokens}
         with open(self.token_file_path, "w") as f:

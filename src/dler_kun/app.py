@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import re
 import signal
 import threading
@@ -103,6 +104,8 @@ class DlerKunApp:
         output_dir: str | Path | None = None,
         options: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
+        unique_urls = list(dict.fromkeys(urls))
+        output_ids = _download_ids_for_urls(unique_urls)
         output = Path(output_dir or self.config.get("output_dir", "downloads"))
         base_options = {
             **(options or {}),
@@ -127,7 +130,7 @@ class DlerKunApp:
         if (options or {}).get("god"):
             base_options["god"] = True
             base_options["parallel_urls"] = max(
-                int(base_options.get("parallel_urls") or 0), len(urls)
+                int(base_options.get("parallel_urls") or 0), len(unique_urls)
             )
             base_options["hls_workers"] = max(
                 int(base_options.get("hls_workers") or 0), 15
@@ -135,33 +138,41 @@ class DlerKunApp:
             base_options["segment_concurrency"] = max(
                 int(base_options.get("segment_concurrency") or 0), 8
             )
-        parallel = int((options or {}).get("parallel_urls", 0))
+        parallel = int(base_options.get("parallel_urls") or 0)
         if parallel <= 0:
-            parallel = min(len(urls), AUTO_PARALLEL_URLS)
+            parallel = min(len(unique_urls), AUTO_PARALLEL_URLS)
         parallel = max(1, parallel)
         self.progress.start_live()
         try:
             if parallel <= 1:
                 results = [
-                    self._download_one_url(url, output, base_options) for url in urls
+                    self._download_one_url(
+                        url, output, base_options, output_id=output_ids[url]
+                    )
+                    for url in unique_urls
                 ]
             else:
                 with ThreadPoolExecutor(max_workers=parallel) as pool:
                     results = list(
                         pool.map(
-                            lambda url: self._download_one_url(url, output, base_options),
-                            urls,
+                            lambda url: self._download_one_url(
+                                url, output, base_options, output_id=output_ids[url]
+                            ),
+                            unique_urls,
                         )
                     )
         finally:
             self.progress.close_live()
-        return results
+        results_by_url = dict(zip(unique_urls, results, strict=True))
+        return [results_by_url[url] for url in urls]
 
     def _download_one_url(
         self,
         url: str,
         output: Path,
         base_options: dict[str, Any],
+        *,
+        output_id: str | None = None,
     ) -> dict[str, Any]:
         detected = self.factory.detect(url)
         if not detected:
@@ -172,7 +183,7 @@ class DlerKunApp:
                 "message": "対応サービスではありません",
             }
         item_output = output
-        url_id = _download_id_from_url(url)
+        url_id = output_id or _download_id_from_url(url)
         if url_id:
             item_output = output / url_id
         queue_job = self.queue.create(
@@ -272,6 +283,13 @@ class DlerKunApp:
                 "status": JobStatus.UNSUPPORTED.value,
                 "message": "対応サービスではありません",
             }
+        if days is not None and days < 0:
+            return {
+                "service": service,
+                "status": JobStatus.FAILED.value,
+                "message": "days must be zero or greater",
+                "errors": ["invalid_request"],
+            }
         # GoFile crawl is ranking under another name; avoid creating an orphan crawl job.
         if service == "gofile":
             return self.ranking(
@@ -283,10 +301,12 @@ class DlerKunApp:
             )
         queue_job = self.queue.create("crawl", engine.engine_id, service, str(output))
         seeds_list = list(seeds or [])
-        resolved_days = days or 10
+        resolved_days = 10 if days is None else days
         if service == "85xo":
             config_85xo = self.config.get("85xo", {})
-            resolved_days = int(days or config_85xo.get("days", 10))
+            resolved_days = (
+                int(config_85xo.get("days", 10)) if days is None else days
+            )
             options.setdefault("max_pages", int(config_85xo.get("max_pages", 50)))
             options.setdefault(
                 "network_capture_seconds",
@@ -476,15 +496,14 @@ class DlerKunApp:
         engine_id: str,
         errors: list[str],
     ) -> dict[str, Any] | None:
-        if self.queue.is_cancelled(job_id):
-            return self._cancel_result(job_id, engine_id, message or "Job cancelled")
         progress = 100 if status == JobStatus.SUCCESS else 0
-        self.queue.update(
+        if not self.queue.finish(
             job_id,
-            status=status,
+            status,
             progress=progress,
             error="; ".join(errors),
-        )
+        ):
+            return self._cancel_result(job_id, engine_id, message or "Job cancelled")
         self.progress.finish(
             job_id,
             ok=status == JobStatus.SUCCESS,
@@ -599,6 +618,12 @@ class DlerKunApp:
                 "status": JobStatus.UNSUPPORTED.value,
                 "message": "job not found",
             }
+        if job.status != JobStatus.CANCELLED:
+            return {
+                "job_id": job_id,
+                "status": job.status.value,
+                "message": "Job already finished",
+            }
         return self._cancel_result(job_id, job.engine_id, "Job cancelled")
 
     def cancel_all(self) -> dict[str, Any]:
@@ -657,18 +682,47 @@ AUTO_PARALLEL_URLS = 4
 
 
 def _download_id_from_url(url: str) -> str | None:
-    """Last path segment of a URL, used as the per-download folder name."""
+    """Build a filesystem-safe, URL-specific folder name without exposing query data."""
     from urllib.parse import unquote, urlsplit
 
+    raw_url = str(url or "").strip()
     try:
-        path = urlsplit(str(url or "")).path.rstrip("/")
+        parsed = urlsplit(raw_url)
     except ValueError:
         return None
-    if not path:
+    if not raw_url:
         return None
-    segment = unquote(path.rsplit("/", 1)[-1])
-    segment = re.sub(r'[<>:"/\\|?*\x00-\x1f]+', "_", segment).strip(" ._")
-    return segment or None
+    host = (parsed.hostname or "url").lower()
+    segment = unquote(parsed.path.rstrip("/").rsplit("/", 1)[-1]) or "root"
+    host = re.sub(r'[<>:"/\\|?*\x00-\x1f]+', "_", host).strip(" ._")[:40]
+    segment = re.sub(r'[<>:"/\\|?*\x00-\x1f]+', "_", segment).strip(" ._")[:60]
+    digest = hashlib.sha256(raw_url.encode("utf-8", errors="surrogatepass")).hexdigest()
+    return f"{host or 'url'}-{segment or 'item'}-{digest}"
+
+
+def _download_ids_for_urls(urls: list[str]) -> dict[str, str]:
+    """Disambiguate even an observed digest collision within one download batch."""
+    owners: dict[str, str] = {}
+    ids: dict[str, str] = {}
+    for url in urls:
+        base_id = _download_id_from_url(url)
+        if base_id is None:
+            base_id = "url-" + hashlib.sha256(
+                url.encode("utf-8", errors="surrogatepass")
+            ).hexdigest()
+        candidate = base_id
+        if candidate in owners and owners[candidate] != url:
+            digest = hashlib.sha512(
+                url.encode("utf-8", errors="surrogatepass")
+            ).hexdigest()
+            candidate = f"{base_id}-{digest}"
+            duplicate = 2
+            while candidate in owners and owners[candidate] != url:
+                candidate = f"{base_id}-{digest}-{duplicate}"
+                duplicate += 1
+        owners[candidate] = url
+        ids[url] = candidate
+    return ids
 
 
 def to_jsonable(value: Any) -> Any:

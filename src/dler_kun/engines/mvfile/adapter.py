@@ -63,6 +63,7 @@ class MvfileEngine(IDownloader):
             "gofile.video",
             "gofile.trade",
             "gofile.bar",
+            "gofile.pl",
         )
         if any(host == domain or host.endswith(f".{domain}") for domain in supported):
             return True

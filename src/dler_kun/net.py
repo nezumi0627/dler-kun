@@ -183,13 +183,19 @@ def fetch_text(
     for key, value in (headers or {}).items():
         command += ["--header", f"{key}: {value}"]
     command += ["--", url]
-    completed = subprocess.run(
-        command,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-    )
+    try:
+        completed = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout_seconds,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise CurlDownloadError(
+            f"curl timed out after {timeout_seconds:g} seconds"
+        ) from exc
     if completed.returncode != 0:
         detail = completed.stderr.strip()
         raise CurlDownloadError(detail or f"curl exit {completed.returncode}")

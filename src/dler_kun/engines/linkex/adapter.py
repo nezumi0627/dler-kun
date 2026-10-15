@@ -44,7 +44,12 @@ class LinkexEngine(IDownloader):
             )
         except LinkexApiError as exc:
             code = str(exc)
-            mapped = "not_found" if "not found" in code.lower() else "network_error"
+            if code == "invalid_request":
+                mapped = code
+            elif "not found" in code.lower():
+                mapped = "not_found"
+            else:
+                mapped = "network_error"
             return DownloadResult(request.job_id, self.engine_id, JobStatus.FAILED, code, errors=[mapped])
         except Exception as exc:  # noqa: BLE001
             return DownloadResult(request.job_id, self.engine_id, JobStatus.FAILED, str(exc), errors=["download_failed"])

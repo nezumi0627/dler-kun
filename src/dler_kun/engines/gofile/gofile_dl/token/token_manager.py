@@ -17,7 +17,7 @@ class TokenManager:
         self.token_file_manager = TokenFileManager(token_file)
         self.api_manager = GoFileAPIManager()
         self.account_manager = GofileAccountManager()
-        self.tokens = self.token_file_manager.load_tokens()
+        self.tokens: list[dict[str, object]] = self.token_file_manager.load_tokens()
 
     async def get_valid_token(self) -> str | None:
         """有効なトークンを取得（環境変数またはtokens.json）"""
@@ -26,8 +26,9 @@ class TokenManager:
             return token
 
         for candidate in self.tokens:
-            if candidate.get("valid") and candidate.get("token"):
-                return candidate["token"]
+            token_value = candidate.get("token")
+            if candidate.get("valid") and isinstance(token_value, str) and token_value:
+                return token_value
 
         return None
 
@@ -43,7 +44,11 @@ class TokenManager:
         for t in self.tokens:
             if t["token"] == token:
                 t["valid"] = False
-                t.setdefault("account", {})["status"] = "invalid"
+                account = t.get("account")
+                if not isinstance(account, dict):
+                    account = {}
+                    t["account"] = account
+                account["status"] = "invalid"
                 break
         await self.token_file_manager.save_tokens(self.tokens)
 

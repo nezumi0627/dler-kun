@@ -143,6 +143,7 @@ class Engine85xo(IDownloader):
             option_seed=request.options.get("seed"),
             sources=request.options.get("sources"),
         )
+        errors: list[str] = []
         fast_items = crawl_fast(
             seeds=[str(seed) for seed in seeds],
             days=request.days,
@@ -153,6 +154,7 @@ class Engine85xo(IDownloader):
             discover_workers=int(request.options.get("discover_workers", 6)),
             stop_event=stop_event,
             resolve_cache=resolve_cache,
+            errors=errors,
         )
         media_items = to_existing_media_items(fast_items)
         limit = int(request.options.get("limit") or 0)
@@ -160,8 +162,7 @@ class Engine85xo(IDownloader):
             media_items = media_items[:limit]
         crawl_items = [self._to_crawl_item(item) for item in media_items]
         files: list[str] = []
-        status = JobStatus.SUCCESS
-        errors: list[str] = []
+        status = JobStatus.FAILED if errors else JobStatus.SUCCESS
         if request.download and media_items:
             download_config = DownloadConfig(
                 output_dir=request.output_dir,

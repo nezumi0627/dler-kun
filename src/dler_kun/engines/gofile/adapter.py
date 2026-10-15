@@ -239,16 +239,7 @@ class GoFileEngine(IDownloader):
             )
 
         message = result.get("message") or "GoFile download failed."
-        errors = [str(error) for error in result.get("errors", [])]
-        if not errors:
-            if status == "not_found":
-                errors = ["not_found"]
-            elif _is_unauthorized_result(result):
-                errors = ["auth_required"]
-            else:
-                errors = [str(status or "download_failed")]
-        elif _is_unauthorized_result(result) and "auth_required" not in errors:
-            errors = ["auth_required", *errors]
+        errors = [_common_gofile_error(status, message, result.get("errors", []))]
 
         return DownloadResult(
             job_id=request.job_id,
@@ -465,6 +456,30 @@ def _is_unauthorized_result(result: dict[str, Any]) -> bool:
     message = str(result.get("message") or "")
     lowered = message.lower()
     return "unauthorized" in lowered or "アクセス権" in message
+
+
+def _common_gofile_error(status: Any, message: Any, errors: Any) -> str:
+    """Map legacy downloader errors to the shared engine error vocabulary."""
+    text = " ".join([str(status or ""), str(message or ""), *(str(e) for e in errors)])
+    lowered = text.lower()
+    if "error-notfound" in lowered or "not_found" in lowered or status == "not_found":
+        return "not_found"
+    if _is_unauthorized_result({"message": text}) or any(
+        marker in lowered
+        for marker in ("error-notpremium", "error-notauthenticated", "error-wrongtoken")
+    ):
+        return "auth_required"
+    if "ratelimit" in lowered or "rate limit" in lowered or "http 429" in lowered:
+        return "network_error"
+    if "invalid url" in lowered or "invalid_request" in lowered:
+        return "invalid_request"
+    if "dependency_missing" in lowered or "module not found" in lowered:
+        return "dependency_missing"
+    if "network_error" in lowered or "connection error" in lowered:
+        return "network_error"
+    if "crawl_failed" in lowered:
+        return "crawl_failed"
+    return "download_failed"
 
 
 def _content_label(url: str) -> str:

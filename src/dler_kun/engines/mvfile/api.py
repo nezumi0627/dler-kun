@@ -10,6 +10,7 @@ from urllib.request import Request, urlopen
 DEFAULT_API_BASE = "https://rwzugqnp.fun800.click/app-api"
 DEFAULT_PAGE_HOST = "cdn.mvfile.com"
 GOFILE_BAR_API = "https://gofile.bar/api.php"
+GOFILE_PL_API = "https://gofile.pl/api.php"
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
     "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -61,7 +62,7 @@ def page_domain_from_url(url: str, fallback: str = DEFAULT_PAGE_HOST) -> str:
 
 
 def page_url_for(short_link: str, domain: str = DEFAULT_PAGE_HOST) -> str:
-    if domain.lower() == "gofile.bar":
+    if domain.lower() in {"gofile.bar", "gofile.pl"}:
         return f"https://{domain}/d/{short_link.lstrip('/d/')}"
     return f"https://{domain}/{short_link}"
 
@@ -266,8 +267,8 @@ def _api_get(
 
     domain = str(params.get("domain") or urlparse(referer).hostname or "").lower()
     endpoint_url = urlparse(endpoint)
-    if domain == "gofile.bar":
-        api_base = GOFILE_BAR_API
+    if domain in {"gofile.bar", "gofile.pl"}:
+        api_base = GOFILE_BAR_API if domain == "gofile.bar" else GOFILE_PL_API
         endpoint_path = endpoint_url.path
         if endpoint_path.startswith("/app-api/"):
             endpoint_path = endpoint_path[len("/app-api") :]

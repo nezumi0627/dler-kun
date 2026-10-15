@@ -14,8 +14,9 @@ from ...models import (
 from ...net import fetch_text
 
 VIDEY_ID_RE = re.compile(r'videy["\']?\s*[:=]\s*["\']([A-Za-z0-9]+)["\']')
+VIDEY_CDN_RE = re.compile(r"https?://cdn\.videy\.co/([A-Za-z0-9]+)\.mp4(?:[?#\"'<>\s]|$)")
 CDN_URL = "https://cdn.videy.co/{vid}.mp4"
-DOMAINS = ("video.twimg.news", "videy.co")
+DOMAINS = ("video.twimg.news", "video.twimg.it.com", "videy.co")
 
 
 class VideyEngine(IDownloader):
@@ -40,7 +41,7 @@ class VideyEngine(IDownloader):
                 message=str(exc),
                 errors=["network_error"],
             )
-        ids = list(dict.fromkeys(VIDEY_ID_RE.findall(html)))
+        ids = list(dict.fromkeys(VIDEY_ID_RE.findall(html) + VIDEY_CDN_RE.findall(html)))
         if not ids:
             return DownloadResult(
                 job_id=request.job_id,

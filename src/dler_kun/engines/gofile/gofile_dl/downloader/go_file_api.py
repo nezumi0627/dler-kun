@@ -17,6 +17,7 @@ IP ブロック回避:
 """
 
 import asyncio
+import email.utils
 import hashlib
 import math
 import os
@@ -24,6 +25,7 @@ import re
 import subprocess
 import time
 import urllib.parse
+from datetime import timezone
 from typing import Any
 
 import aiohttp
@@ -112,12 +114,35 @@ def _make_connector(
 
 
 def _retry_after_seconds(headers: Any) -> float:
-    """Return a bounded server-requested delay for HTTP 429 responses."""
+    """Parse Retry-After seconds or HTTP-date without shortening the request."""
     raw = headers.get("Retry-After") if headers else None
-    try:
-        return max(0.0, min(float(raw), _RATE_LIMIT_MAX_WAIT))
-    except (TypeError, ValueError):
+    if raw is None:
         return _RATE_LIMIT_DEFAULT_WAIT
+    try:
+        seconds = float(raw)
+        return max(0.0, seconds) if math.isfinite(seconds) else _RATE_LIMIT_DEFAULT_WAIT
+    except (TypeError, ValueError):
+        try:
+            retry_at = email.utils.parsedate_to_datetime(str(raw))
+            if retry_at is None:
+                return _RATE_LIMIT_DEFAULT_WAIT
+            if retry_at.tzinfo is None:
+                retry_at = retry_at.replace(tzinfo=timezone.utc)
+            return max(0.0, retry_at.timestamp() - time.time())
+        except (AttributeError, OSError, TypeError, ValueError, OverflowError):
+            return _RATE_LIMIT_DEFAULT_WAIT
+
+
+class GoFileRateLimitError(ValueError):
+    """Rate limit response with the server-requested delay for the caller."""
+
+    def __init__(self, source: str, retry_after: float) -> None:
+        self.source = source
+        self.retry_after = retry_after
+        super().__init__(
+            f"Rate limited ({source}); server requested a {retry_after:g}s wait, "
+            f"above the {_RATE_LIMIT_MAX_WAIT:g}s automatic wait ceiling."
+        )
 
 
 class GoFileAPI:
@@ -332,28 +357,35 @@ class GoFileAPI:
         last_err: Exception | None = None
 
         for attempt in range(_CONTENT_MAX_ATTEMPTS):
-            if attempt > 0:
-                wait = 1.0
-                await asyncio.sleep(wait)
-
             try:
                 response = await self._session.get(
                     url, headers=headers, **self._proxy_arg()
                 )
                 if response.status == 429:
                     wait = _retry_after_seconds(response.headers)
-                    last_err = ValueError(
-                        f"Rate limited (HTTP 429)。{wait:g}秒後に再試行します。"
-                    )
                     response.release()
+                    if wait > _RATE_LIMIT_MAX_WAIT:
+                        raise GoFileRateLimitError("HTTP 429", wait)
+                    last_err = ValueError(
+                        f"Rate limited (HTTP 429); retry after {wait:g}s."
+                    )
                     if attempt < _CONTENT_MAX_ATTEMPTS - 1:
                         await asyncio.sleep(wait)
                         continue
                     raise last_err
                 if response.status in _RETRYABLE:
+                    wait = _retry_after_seconds(response.headers)
+                    if "Retry-After" in response.headers and wait > _RATE_LIMIT_MAX_WAIT:
+                        response.release()
+                        raise GoFileRateLimitError(
+                            f"HTTP {response.status}", wait
+                        )
                     last_err = ValueError(
                         f"HTTP エラー {response.status}: サーバー一時障害 (リトライ {attempt + 1}/{_CONTENT_MAX_ATTEMPTS})"
                     )
+                    response.release()
+                    if attempt < _CONTENT_MAX_ATTEMPTS - 1:
+                        await asyncio.sleep(wait if "Retry-After" in response.headers else 1.0)
                     continue  # リトライ
                 response.raise_for_status()
             except aiohttp.ClientResponseError as e:
@@ -377,11 +409,14 @@ class GoFileAPI:
             data = await response.json()
             status = data.get("status", "")
             if status == "error-rateLimit":
+                wait = _retry_after_seconds(response.headers)
+                if wait > _RATE_LIMIT_MAX_WAIT:
+                    raise GoFileRateLimitError("error-rateLimit", wait)
                 last_err = ValueError(
-                    "Rate limited (error-rateLimit)。しばらく待ってから再試行してください。"
+                    f"Rate limited (error-rateLimit); retry after {wait:g}s."
                 )
                 if attempt < _CONTENT_MAX_ATTEMPTS - 1:
-                    await asyncio.sleep(_RATE_LIMIT_DEFAULT_WAIT)
+                    await asyncio.sleep(wait)
                     continue
                 raise last_err
             if status == "error-notFound":

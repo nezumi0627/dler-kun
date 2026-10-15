@@ -4,6 +4,7 @@ from .downloader.file_downloader import FileDownloader
 from .downloader.go_file_api import GoFileAPI
 from .downloader.go_file_downloader import GoFileDownloader
 from .logger import Logger
+from .token.get_status import GofileAccountManager
 from .ui.cli import CLI
 
 __all__ = [

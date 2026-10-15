@@ -62,6 +62,12 @@ class TwimgEngine(IDownloader):
             "-o",
             str(request.output_dir),
         ]
+        request.output_dir.mkdir(parents=True, exist_ok=True)
+        before = {
+            path.resolve()
+            for path in request.output_dir.rglob("*")
+            if path.is_file()
+        }
         if request.options.get("force"):
             command.append("--force")
         if request.options.get("verbose"):
@@ -76,25 +82,44 @@ class TwimgEngine(IDownloader):
         if local_addr:
             command.extend(["--local-addr", local_addr])
 
-        completed = subprocess.run(
-            command,
-            cwd=str(self.project_path),
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            check=False,
-        )
-        output = "\n".join(
-            part for part in (completed.stdout, completed.stderr) if part
-        )
+        try:
+            completed = subprocess.run(
+                command,
+                cwd=str(self.project_path),
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                check=False,
+            )
+        except FileNotFoundError as exc:
+            return DownloadResult(
+                job_id=request.job_id,
+                engine_id=self.engine_id,
+                status=JobStatus.FAILED,
+                message=f"Required downloader dependency is missing: {exc.filename or 'python'}",
+                errors=["dependency_missing"],
+            )
         if completed.returncode == 0:
+            files = sorted(
+                str(path)
+                for path in request.output_dir.rglob("*")
+                if path.is_file() and path.resolve() not in before
+            )
+            if not files:
+                return DownloadResult(
+                    job_id=request.job_id,
+                    engine_id=self.engine_id,
+                    status=JobStatus.FAILED,
+                    message="twimg exited successfully without creating media files.",
+                    errors=["download_failed"],
+                )
             return DownloadResult(
                 job_id=request.job_id,
                 engine_id=self.engine_id,
                 status=JobStatus.SUCCESS,
                 message="twimg completed.",
-                metadata={"stdout": output[-8000:]},
+                files=files,
             )
         return DownloadResult(
             job_id=request.job_id,
@@ -102,7 +127,6 @@ class TwimgEngine(IDownloader):
             status=JobStatus.FAILED,
             message=f"twimg failed with exit code {completed.returncode}.",
             errors=["download_failed"],
-            metadata={"stdout": output[-8000:]},
         )
 
     def crawl(self, request: CrawlRequest) -> CrawlResult:
