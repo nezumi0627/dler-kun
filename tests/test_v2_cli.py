@@ -199,6 +199,45 @@ def test_cli_uses_configured_output_directory_unless_overridden(tmp_path, monkey
     capsys.readouterr()
 
 
+def test_cli_applies_network_config_to_shared_http_runtime(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "config.json").write_text(
+        json.dumps({
+            "timeout": 22,
+            "threads": 2,
+            "proxy": "http://proxy.example:8080",
+            "cookie": "session=private",
+            "user_agent": "configured-agent",
+            "local_addr": "127.0.0.1",
+        }),
+        encoding="utf-8",
+    )
+    captured = {}
+
+    class Runtime:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    def run(_command, _target, registry, **_kwargs):
+        assert registry.http_runtime is not None
+        return {"accepted": True}
+
+    monkeypatch.setattr("dler_kun2.presentation.cli.main.HttpRuntime", Runtime, raising=False)
+    monkeypatch.setattr("dler_kun2.presentation.cli.main.run_command", run)
+    assert main(["sites", "--json"]) == 0
+    assert captured == {
+        "total_timeout": 22.0,
+        "connect_timeout": 10.0,
+        "read_timeout": 22.0,
+        "concurrency": 2,
+        "proxy": "http://proxy.example:8080",
+        "cookie": "session=private",
+        "user_agent": "configured-agent",
+        "local_addr": "127.0.0.1",
+    }
+    capsys.readouterr()
+
+
 @pytest.mark.parametrize("command", ["detect", "download", "crawl", "ranking", "jobs", "cancel", "config"])
 def test_cli_json_is_valid_for_every_command(command, capsys):
     args = [command]

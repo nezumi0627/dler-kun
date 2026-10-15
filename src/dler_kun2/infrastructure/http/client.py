@@ -1,6 +1,7 @@
 """A pooled aiohttp transport with bounded timeouts and cancellation."""
 
 import asyncio
+import ipaddress
 from typing import Any
 from urllib.parse import SplitResult, urljoin, urlsplit
 
@@ -73,6 +74,10 @@ class HttpRuntime:
         concurrency: int = 4,
         max_retry_wait: float = 300.0,
         max_redirects: int = 10,
+        proxy: str | None = None,
+        user_agent: str | None = None,
+        cookie: str | None = None,
+        local_addr: str | None = None,
     ):
         self._timeout = aiohttp.ClientTimeout(
             total=total_timeout, connect=connect_timeout, sock_read=read_timeout
@@ -81,6 +86,22 @@ class HttpRuntime:
         self._session: aiohttp.ClientSession | None = None
         self.limiter = OriginLimiter(concurrency, max_retry_wait)
         self.max_redirects = max_redirects
+        self._proxy = proxy or None
+        self._user_agent = user_agent or None
+        self._cookie = cookie or None
+        try:
+            address = ipaddress.ip_address(local_addr) if local_addr else None
+        except ValueError as exc:
+            raise ValueError("local_addr must be an IP address") from exc
+        self._local_addr = (str(address), 0) if address else None
+        if self._proxy:
+            parsed_proxy = urlsplit(self._proxy)
+            if parsed_proxy.scheme not in {"http", "https", "socks4", "socks5"} or not parsed_proxy.hostname:
+                raise ValueError("proxy must be an HTTP(S) or SOCKS URL")
+            try:
+                parsed_proxy.port
+            except ValueError as exc:
+                raise ValueError("proxy port is invalid") from exc
 
     @staticmethod
     def _validate_url(url: str, message: str) -> SplitResult:
@@ -101,7 +122,14 @@ class HttpRuntime:
     async def _get_session(self) -> aiohttp.ClientSession:
         if self._session is None or self._session.closed:
             if self._connector is None or self._connector.closed:
-                self._connector = aiohttp.TCPConnector(limit=0)
+                if self._proxy:
+                    from aiohttp_socks import ProxyConnector
+
+                    self._connector = ProxyConnector.from_url(
+                        self._proxy, limit=0, local_addr=self._local_addr
+                    )
+                else:
+                    self._connector = aiohttp.TCPConnector(limit=0, local_addr=self._local_addr)
             self._session = aiohttp.ClientSession(
                 timeout=self._timeout, connector=self._connector
             )
@@ -118,6 +146,14 @@ class HttpRuntime:
         self._validate_url(
             url, "only valid HTTP(S) URLs without credentials are allowed"
         )
+        headers = dict(kwargs.get("headers") or {})
+        normalized_headers = {name.lower() for name in headers}
+        if self._user_agent and "user-agent" not in normalized_headers:
+            headers["User-Agent"] = self._user_agent
+        if self._cookie and "cookie" not in normalized_headers:
+            headers["Cookie"] = self._cookie
+        if headers:
+            kwargs["headers"] = headers
         session = await self._get_session()
         current = url
         for redirect_count in range(self.max_redirects + 1):

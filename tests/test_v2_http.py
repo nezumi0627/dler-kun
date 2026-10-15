@@ -292,3 +292,51 @@ def test_cross_origin_redirect_does_not_forward_credentials():
             await destination_server.close()
 
     asyncio.run(scenario())
+
+
+def test_runtime_defaults_send_configured_headers_and_strip_cookie_on_redirect():
+    async def scenario():
+        seen = []
+
+        async def destination(request):
+            seen.append((request.headers.get("Cookie"), request.headers.get("User-Agent")))
+            return web.Response(text="ok")
+
+        destination_app = web.Application()
+        destination_app.router.add_get("/target", destination)
+        destination_server = TestServer(destination_app)
+        await destination_server.start_server()
+
+        async def redirect(request):
+            seen.append((request.headers.get("Cookie"), request.headers.get("User-Agent")))
+            raise web.HTTPFound(str(destination_server.make_url("/target")))
+
+        source_app = web.Application()
+        source_app.router.add_get("/", redirect)
+        source_server = TestServer(source_app)
+        await source_server.start_server()
+        runtime = HttpRuntime(cookie="session=private", user_agent="dler-kun-test")
+        try:
+            response = await runtime.request("GET", str(source_server.make_url("/")))
+            assert await response.text() == "ok"
+            assert seen == [("session=private", "dler-kun-test"), (None, "dler-kun-test")]
+        finally:
+            await runtime.close()
+            await source_server.close()
+            await destination_server.close()
+
+    asyncio.run(scenario())
+
+
+def test_runtime_configures_socks_proxy_connector():
+    async def scenario():
+        runtime = HttpRuntime(proxy="socks5://127.0.0.1:1080", local_addr="127.0.0.1")
+        try:
+            await runtime._get_session()
+            from aiohttp_socks import ProxyConnector
+
+            assert isinstance(runtime._connector, ProxyConnector)
+        finally:
+            await runtime.close()
+
+    asyncio.run(scenario())

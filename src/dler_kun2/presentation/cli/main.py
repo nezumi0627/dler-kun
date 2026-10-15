@@ -3,14 +3,50 @@
 from __future__ import annotations
 
 import argparse
+from math import isfinite
 from pathlib import Path
+from urllib.parse import urlsplit
 
-from dler_kun2.domain.errors import EngineError
+from dler_kun2.domain.errors import EngineError, ErrorCode
+from dler_kun2.infrastructure.http.client import HttpRuntime
 from dler_kun2.infrastructure.state.config import ConfigStore
 from dler_kun2.presentation.cli.commands import run_command
 from dler_kun2.presentation.cli.output import emit
 from dler_kun2.routing.defaults import build_registry
 from dler_kun2.routing.registry import EngineRegistry, RouteError
+
+
+def _runtime_from_config(config: dict[str, object]) -> HttpRuntime:
+    try:
+        timeout = float(config.get("timeout", 30))
+        concurrency = int(config.get("threads", 3))
+    except (TypeError, ValueError) as exc:
+        raise EngineError(ErrorCode.INVALID_REQUEST, "network timeout or thread count is invalid") from exc
+    if not isfinite(timeout) or timeout <= 0 or not 1 <= concurrency <= 64:
+        raise EngineError(ErrorCode.INVALID_REQUEST, "network timeout or thread count is outside supported bounds")
+    proxy_value = config.get("proxy", "")
+    proxy = str(proxy_value).strip() if proxy_value else None
+    if proxy:
+        parsed_proxy = urlsplit(proxy)
+        if parsed_proxy.scheme not in {"http", "https", "socks4", "socks5"} or not parsed_proxy.hostname:
+            raise EngineError(ErrorCode.INVALID_REQUEST, "configured proxy URL is invalid")
+        try:
+            parsed_proxy.port
+        except ValueError as exc:
+            raise EngineError(ErrorCode.INVALID_REQUEST, "configured proxy port is invalid") from exc
+    try:
+        return HttpRuntime(
+            total_timeout=timeout,
+            connect_timeout=min(10.0, timeout),
+            read_timeout=timeout,
+            concurrency=concurrency,
+            proxy=proxy,
+            cookie=str(config.get("cookie") or "") or None,
+            user_agent=str(config.get("user_agent") or "") or None,
+            local_addr=str(config.get("local_addr") or "") or None,
+        )
+    except ValueError as exc:
+        raise EngineError(ErrorCode.INVALID_REQUEST, "network configuration is invalid") from exc
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -67,9 +103,11 @@ def main(argv: list[str] | None = None) -> int:
     option_names = ("max_pages", "limit", "password", "segment_concurrency", "browser_path", "ffmpeg_path", "timeout_seconds", "resolve_workers", "force", "overwrite")
     options = {name: value for name in option_names if (value := getattr(args, name, None)) not in (None, False)}
     try:
-        configured_output = ConfigStore().as_dict(redact=False).get("output_dir", "downloads")
+        config = ConfigStore().as_dict(redact=False)
+        configured_output = config.get("output_dir", "downloads")
         output_dir = getattr(args, "output_dir", None) or Path(str(configured_output))
-        value = run_command(args.command, target, build_registry(EngineRegistry()), output_dir=output_dir, download_items=getattr(args, "download", False), seeds=seeds, days=getattr(args, "days", None), save_config=getattr(args, "save", False), cancel_all=getattr(args, "all", False), targets=targets, parallel_urls=getattr(args, "parallel_urls", 4), options=options)
+        registry = build_registry(EngineRegistry(), http=_runtime_from_config(config))
+        value = run_command(args.command, target, registry, output_dir=output_dir, download_items=getattr(args, "download", False), seeds=seeds, days=getattr(args, "days", None), save_config=getattr(args, "save", False), cancel_all=getattr(args, "all", False), targets=targets, parallel_urls=getattr(args, "parallel_urls", 4), options=options)
     except RouteError as exc:
         value = exc.error
     except EngineError as exc:

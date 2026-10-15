@@ -19,6 +19,7 @@ _DEFAULTS: dict[str, Any] = {
     "proxy": "",
     "cookie": "",
     "user_agent": "",
+    "local_addr": "",
     "engine_paths": {"twimg": ""},
     "85xo": {"days": 10, "max_pages": 50, "network_capture_seconds": 15.0},
     "gofile": {"ranking_limit": 60, "max_more_clicks": 5},
