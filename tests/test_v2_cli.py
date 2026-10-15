@@ -159,6 +159,23 @@ def test_cli_forwards_supported_crawl_options_and_sources(capsys, monkeypatch):
     assert json.loads(capsys.readouterr().out)["accepted"] is True
 
 
+def test_cli_uses_configured_output_directory_unless_overridden(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "config.json").write_text('{"output_dir": "configured-output"}', encoding="utf-8")
+    captured = []
+
+    def run(_command, _target, _registry, **kwargs):
+        captured.append(kwargs["output_dir"])
+        return {"accepted": True}
+
+    monkeypatch.setattr("dler_kun2.presentation.cli.main.run_command", run)
+    assert main(["download", "https://sample.test/a", "--json"]) == 0
+    assert captured[-1] == Path("configured-output")
+    assert main(["download", "https://sample.test/a", "-o", "explicit-output", "--json"]) == 0
+    assert captured[-1] == Path("explicit-output")
+    capsys.readouterr()
+
+
 @pytest.mark.parametrize("command", ["detect", "download", "crawl", "ranking", "jobs", "cancel", "config"])
 def test_cli_json_is_valid_for_every_command(command, capsys):
     args = [command]

@@ -6,6 +6,7 @@ import argparse
 from pathlib import Path
 
 from dler_kun2.domain.errors import EngineError
+from dler_kun2.infrastructure.state.config import ConfigStore
 from dler_kun2.presentation.cli.commands import run_command
 from dler_kun2.presentation.cli.output import emit
 from dler_kun2.routing.defaults import build_registry
@@ -47,7 +48,7 @@ def main(argv: list[str] | None = None) -> int:
             command.add_argument("--save", action="store_true", help="Write the effective config.json")
         command.add_argument("--json", action="store_true")
         if name in {"download", "crawl", "ranking"}:
-            command.add_argument("-o", "--output-dir", type=Path, default=Path("downloads"))
+            command.add_argument("-o", "--output-dir", type=Path)
         if name == "download":
             command.add_argument("--parallel-urls", type=int, default=4, help="Maximum URLs downloaded concurrently")
         if name in {"crawl", "ranking"}:
@@ -62,7 +63,9 @@ def main(argv: list[str] | None = None) -> int:
     option_names = ("max_pages", "limit", "password", "segment_concurrency", "browser_path", "ffmpeg_path", "timeout_seconds", "resolve_workers")
     options = {name: getattr(args, name) for name in option_names if getattr(args, name, None) is not None}
     try:
-        value = run_command(args.command, target, build_registry(EngineRegistry()), output_dir=getattr(args, "output_dir", Path("downloads")), download_items=getattr(args, "download", False), seeds=seeds, days=getattr(args, "days", None), save_config=getattr(args, "save", False), cancel_all=getattr(args, "all", False), targets=targets, parallel_urls=getattr(args, "parallel_urls", 4), options=options)
+        configured_output = ConfigStore().as_dict(redact=False).get("output_dir", "downloads")
+        output_dir = getattr(args, "output_dir", None) or Path(str(configured_output))
+        value = run_command(args.command, target, build_registry(EngineRegistry()), output_dir=output_dir, download_items=getattr(args, "download", False), seeds=seeds, days=getattr(args, "days", None), save_config=getattr(args, "save", False), cancel_all=getattr(args, "all", False), targets=targets, parallel_urls=getattr(args, "parallel_urls", 4), options=options)
     except RouteError as exc:
         value = exc.error
     except EngineError as exc:
