@@ -131,7 +131,10 @@ class TwimgEngine:
             staged_files = sorted(
                 path
                 for path in staging_dir.rglob("*")
-                if path.is_file() and path.suffix.lower() in _MEDIA_SUFFIXES
+                if path.is_file()
+                and not path.is_symlink()
+                and path.resolve().is_relative_to(staging_dir.resolve())
+                and path.suffix.lower() in _MEDIA_SUFFIXES
             )
             if not staged_files:
                 raise EngineError(ErrorCode.DOWNLOAD_FAILED, "Twimg produced no media files")
@@ -150,7 +153,11 @@ class TwimgEngine:
                     size=source.stat().st_size,
                 )
                 target = allocator.reserve(item, output_dir)
-                shutil.move(str(source), target)
+                try:
+                    shutil.move(str(source), target)
+                except OSError as exc:
+                    target.unlink(missing_ok=True)
+                    raise EngineError(ErrorCode.DOWNLOAD_FAILED, "Twimg output could not be published") from exc
                 published.append(target)
             return tuple(published)
 

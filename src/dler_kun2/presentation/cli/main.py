@@ -36,6 +36,8 @@ def main(argv: list[str] | None = None) -> int:
         value = run_command(args.command, getattr(args, "service", getattr(args, "target", None)), build_registry(EngineRegistry()), output_dir=getattr(args, "output_dir", Path("downloads")), download_items=getattr(args, "download", False), seeds=tuple(getattr(args, "seed", ())), days=getattr(args, "days", None))
     except RouteError as exc:
         value = exc.error
+    except EngineError as exc:
+        value = exc
     emit(value, json_mode=json_mode)
     return 2 if isinstance(value, EngineError) else 0
 

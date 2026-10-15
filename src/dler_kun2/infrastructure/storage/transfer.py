@@ -40,9 +40,15 @@ class TransferService:
                     yield chunk
 
             await self.write_chunks(chunks(), output)
-        except BaseException:
+        except BaseException as exc:
             output.unlink(missing_ok=True)
             Path(f"{output}.part").unlink(missing_ok=True)
+            from dler_kun2.infrastructure.http.client import HttpError
+
+            if isinstance(exc, HttpError):
+                from dler_kun2.domain.errors import EngineError
+
+                raise EngineError(exc.code, "media transfer request failed", exc.retry_after) from exc
             raise
         finally:
             if response is not None:

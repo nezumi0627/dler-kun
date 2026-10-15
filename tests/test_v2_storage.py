@@ -5,9 +5,10 @@ import pytest
 
 from dler_kun2.application.download import download
 from dler_kun2.domain.contracts import CrawlRequest, DownloadRequest, EngineCapabilities
+from dler_kun2.domain.errors import EngineError, ErrorCode
 from dler_kun2.domain.models import CrawlResult
 from dler_kun2.domain.plans import DownloadPlan
-from dler_kun2.infrastructure.http.client import HttpRuntime
+from dler_kun2.infrastructure.http.client import HttpError, HttpRuntime
 from dler_kun2.infrastructure.storage.paths import OutputAllocator
 from dler_kun2.infrastructure.storage.transfer import TransferService
 from dler_kun2.routing.registry import EngineRegistry
@@ -125,6 +126,18 @@ def test_failed_http_status_leaves_no_reserved_output(tmp_path):
             await server.close()
 
     asyncio.run(scenario())
+
+
+def test_transfer_normalizes_http_errors_and_preserves_retry_after(tmp_path):
+    class Runtime:
+        async def request(self, _method, _url):
+            raise HttpError(ErrorCode.RATE_LIMITED, "private response", 15)
+
+    with pytest.raises(EngineError) as failure:
+        asyncio.run(TransferService(Runtime()).transfer(plan("clip.mp4"), tmp_path))
+    assert failure.value.code is ErrorCode.RATE_LIMITED
+    assert failure.value.retry_after == 15
+    assert list(tmp_path.iterdir()) == []
 
 
 def test_failed_stream_removes_reserved_output_and_partial_file(tmp_path):
