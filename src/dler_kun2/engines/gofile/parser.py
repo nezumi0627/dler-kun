@@ -49,6 +49,10 @@ def parse_content(payload: Any) -> tuple[ContentItem, ...]:
     if status != "ok" or not isinstance(payload.get("data"), dict):
         raise EngineError(ErrorCode.NETWORK_ERROR, "GoFile API returned an unsuccessful response")
     data = payload["data"]
+    if data.get("canAccess") is False:
+        if data.get("expire"):
+            raise EngineError(ErrorCode.NOT_FOUND, "GoFile content has expired")
+        raise EngineError(ErrorCode.AUTH_REQUIRED, "GoFile content requires a password or access permission")
     if data.get("type") == "file":
         rows = [data]
     elif isinstance(data.get("children", {}), dict):

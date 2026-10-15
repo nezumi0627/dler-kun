@@ -57,8 +57,10 @@ class GoFileEngine:
                         path = urlsplit(item.media_url).path
                         extension = path.rsplit(".", 1)[-1].lower() if "." in path.rsplit("/", 1)[-1] else "bin"
                         plans.append(DownloadPlan(item.media_url, source, source, extension, item.name, item.size, {"file_id": item.item_id, "relative_dir": parent_name}))
-                pagination = data.get("pagination", {}) if isinstance(data, dict) else {}
-                total_pages = pagination.get("pages") if isinstance(pagination, dict) else None
+                pagination = payload.get("metadata") if isinstance(payload, dict) else None
+                if not isinstance(pagination, dict):
+                    pagination = data.get("pagination", {}) if isinstance(data, dict) else {}
+                total_pages = pagination.get("totalPages", pagination.get("pages")) if isinstance(pagination, dict) else None
                 raw_children = data.get("children", {}) if isinstance(data, dict) else {}
                 raw_count = len(raw_children) if isinstance(raw_children, dict) else 0
                 has_next = pagination.get("hasNextPage") if isinstance(pagination, dict) else None
