@@ -6,6 +6,7 @@ from urllib.parse import urlsplit
 
 from dler_kun2.domain.contracts import Engine
 from dler_kun2.domain.errors import EngineError, ErrorCode
+from dler_kun2.infrastructure.http.client import HttpRuntime
 
 from .rules import PathPrefix, RouteRule
 
@@ -33,7 +34,7 @@ class EngineRegistry:
     def __init__(self) -> None:
         self._engines: dict[str, Engine] = {}
         self._routes: list[RouteRule] = []
-        self.http_runtime = None
+        self.http_runtime: HttpRuntime | None = None
 
     def register(self, engine: Engine, routes: list[RouteRule] | tuple[RouteRule, ...]) -> None:
         if engine.engine_id in self._engines:

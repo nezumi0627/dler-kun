@@ -1,5 +1,7 @@
 import asyncio
 import json
+import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -161,3 +163,39 @@ def test_cli_jobs_and_cancel_use_persistent_state_store(tmp_path, monkeypatch, c
     assert json.loads(capsys.readouterr().out)["cancel_requested"] is True
     assert main(["cancel", "--all", "--json"]) == 0
     assert json.loads(capsys.readouterr().out)["cancelled"] == 0
+
+
+def test_cli_cancel_interrupts_running_crawl_and_records_terminal_state(tmp_path, monkeypatch):
+    monkeypatch.setenv("DLER_KUN2_DATA_DIR", str(tmp_path))
+
+    class SlowEngine(Engine):
+        async def crawl(self, request):
+            await asyncio.sleep(30)
+            return CrawlResult()
+
+    store = JobStore(tmp_path / "jobs.sqlite3")
+    outcome = []
+    worker = threading.Thread(
+        target=lambda: outcome.append(
+            run_command("crawl", "sample", registry(SlowEngine()), output_dir=tmp_path)
+        ),
+        daemon=True,
+    )
+    worker.start()
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        jobs = store.list()
+        if jobs and jobs[0].status == "running":
+            break
+        time.sleep(0.02)
+    else:
+        raise AssertionError("crawl did not create a running job")
+
+    assert store.cancel(jobs[0].id)
+    worker.join(5)
+
+    assert not worker.is_alive()
+    assert len(outcome) == 1
+    assert getattr(outcome[0], "code", None) is ErrorCode.CANCELLED
+    job = store.get(jobs[0].id)
+    assert job.status == "cancelled"

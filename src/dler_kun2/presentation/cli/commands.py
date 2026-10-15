@@ -19,10 +19,32 @@ from dler_kun2.routing.registry import EngineRegistry, RouteError
 def run_command(command: str, target: str | None, registry: EngineRegistry, *, output_dir: Path, download_items: bool = False, seeds: tuple[str, ...] = (), days: int | None = None, save_config: bool = False, cancel_all: bool = False) -> object:
     runtime = registry.http_runtime
 
-    def execute(coroutine):
+    def execute(coroutine, kind: str):
+        store = JobStore(state_dir() / "jobs.sqlite3")
+        job_id = store.create(kind)
+        if not store.transition(job_id, "running"):
+            raise RuntimeError("new job could not enter running state")
+
         async def managed():
             try:
-                return await coroutine
+                task = asyncio.create_task(coroutine)
+                while True:
+                    done, _ = await asyncio.wait((task,), timeout=0.1)
+                    if task in done:
+                        result = await task
+                        store.transition(job_id, "succeeded")
+                        return result
+                    if await asyncio.to_thread(store.is_cancelled, job_id):
+                        task.cancel()
+                        await asyncio.gather(task, return_exceptions=True)
+                        store.transition(job_id, "cancelled")
+                        return EngineError(ErrorCode.CANCELLED, "job was cancelled")
+            except asyncio.CancelledError:
+                store.transition(job_id, "cancelled")
+                return EngineError(ErrorCode.CANCELLED, "job was cancelled")
+            except BaseException:
+                store.transition(job_id, "failed")
+                raise
             finally:
                 if runtime is not None:
                     await runtime.close()
@@ -61,10 +83,10 @@ def run_command(command: str, target: str | None, registry: EngineRegistry, *, o
     if command == "download":
         if target is None:
             raise RouteError(EngineError(ErrorCode.INVALID_REQUEST, "URL is required"))
-        return execute(download(target, output_dir, registry, transfer))
+        return execute(download(target, output_dir, registry, transfer), "download")
     if command in {"crawl", "ranking"}:
         if target is None:
             raise RouteError(EngineError(ErrorCode.INVALID_REQUEST, "service is required"))
         use_case = crawl if command == "crawl" else ranking
-        return execute(use_case(target, seeds, days, output_dir, registry, transfer, download_items=download_items))
+        return execute(use_case(target, seeds, days, output_dir, registry, transfer, download_items=download_items), command)
     raise RouteError(EngineError(ErrorCode.INVALID_REQUEST, "unknown command"))

@@ -19,6 +19,7 @@ class ErrorCode(str, Enum):
     DEPENDENCY_MISSING = "dependency_missing"
     RATE_LIMITED = "rate_limited"
     AMBIGUOUS_SERVICE = "ambiguous_service"
+    CANCELLED = "cancelled"
 
 
 @dataclass(eq=False)
