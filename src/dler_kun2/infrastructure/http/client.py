@@ -2,7 +2,7 @@
 
 import asyncio
 from typing import Any
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import SplitResult, urljoin, urlsplit
 
 import aiohttp
 
@@ -82,6 +82,22 @@ class HttpRuntime:
         self.limiter = OriginLimiter(concurrency, max_retry_wait)
         self.max_redirects = max_redirects
 
+    @staticmethod
+    def _validate_url(url: str, message: str) -> SplitResult:
+        try:
+            parsed = urlsplit(url)
+            parsed.port
+        except ValueError as exc:
+            raise HttpError(ErrorCode.INVALID_REQUEST, message) from exc
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.hostname
+            or parsed.username is not None
+            or parsed.password is not None
+        ):
+            raise HttpError(ErrorCode.INVALID_REQUEST, message)
+        return parsed
+
     async def _get_session(self) -> aiohttp.ClientSession:
         if self._session is None or self._session.closed:
             self._session = aiohttp.ClientSession(
@@ -97,14 +113,9 @@ class HttpRuntime:
         cancel: asyncio.Event | None = None,
         **kwargs: Any,
     ) -> LimitedResponse:
-        parsed = urlsplit(url)
-        if (
-            parsed.scheme not in {"http", "https"}
-            or not parsed.hostname
-            or parsed.username is not None
-            or parsed.password is not None
-        ):
-            raise HttpError(ErrorCode.INVALID_REQUEST, "only HTTP(S) URLs without credentials are allowed")
+        self._validate_url(
+            url, "only valid HTTP(S) URLs without credentials are allowed"
+        )
         session = await self._get_session()
         current = url
         for redirect_count in range(self.max_redirects + 1):
@@ -157,14 +168,7 @@ class HttpRuntime:
                 if not location or redirect_count == self.max_redirects:
                     raise HttpError(ErrorCode.NETWORK_ERROR, "invalid or excessive redirect")
                 destination = urljoin(current, location)
-                dest = urlsplit(destination)
-                if (
-                    dest.scheme not in {"http", "https"}
-                    or not dest.hostname
-                    or dest.username is not None
-                    or dest.password is not None
-                ):
-                    raise HttpError(ErrorCode.INVALID_REQUEST, "unsafe redirect destination")
+                dest = self._validate_url(destination, "unsafe redirect destination")
                 if urlsplit(current).scheme == "https" and dest.scheme != "https":
                     raise HttpError(ErrorCode.INVALID_REQUEST, "HTTPS redirect cannot downgrade to HTTP")
                 if self.limiter.origin(current) != self.limiter.origin(destination):

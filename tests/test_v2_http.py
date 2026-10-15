@@ -56,6 +56,20 @@ def test_http_runtime_rejects_any_url_userinfo(url):
     asyncio.run(scenario())
 
 
+@pytest.mark.parametrize("url", ["https://example.test:bad/", "https://example.test:99999/"])
+def test_http_runtime_normalizes_invalid_initial_port(url):
+    async def scenario():
+        runtime = HttpRuntime()
+        try:
+            with pytest.raises(HttpError) as exc:
+                await runtime.request("GET", url)
+            assert exc.value.code is ErrorCode.INVALID_REQUEST
+        finally:
+            await runtime.close()
+
+    asyncio.run(scenario())
+
+
 def test_retry_after_rejects_nonfinite_values():
     assert retry_after_seconds("inf") is None
     assert retry_after_seconds("-inf") is None
@@ -184,6 +198,29 @@ def test_http_runtime_rejects_redirect_with_password_only_userinfo():
             target = str(request.url.with_path("/target"))
             target = target.replace("http://", "http://:secret@", 1)
             raise web.HTTPFound(target)
+
+        app = web.Application()
+        app.router.add_get("/", redirect)
+        server = TestServer(app)
+        await server.start_server()
+        runtime = HttpRuntime()
+        try:
+            with pytest.raises(HttpError) as exc:
+                await runtime.request("GET", str(server.make_url("/")))
+            assert exc.value.code is ErrorCode.INVALID_REQUEST
+        finally:
+            await runtime.close()
+            await server.close()
+
+    asyncio.run(scenario())
+
+
+def test_http_runtime_normalizes_invalid_redirect_port():
+    async def scenario():
+        async def redirect(_request):
+            return web.Response(
+                status=302, headers={"Location": "https://example.test:bad/target"}
+            )
 
         app = web.Application()
         app.router.add_get("/", redirect)
