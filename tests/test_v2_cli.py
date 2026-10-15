@@ -280,3 +280,27 @@ def test_cli_cancel_interrupts_running_crawl_and_records_terminal_state(tmp_path
     assert getattr(outcome[0], "code", None) is ErrorCode.CANCELLED
     job = store.get(jobs[0].id)
     assert job.status == "cancelled"
+
+
+def test_cli_history_persists_result_summary_without_media_urls(tmp_path, monkeypatch):
+    monkeypatch.setenv("DLER_KUN2_DATA_DIR", str(tmp_path))
+
+    class ResultEngine(Engine):
+        async def crawl(self, request):
+            plan = DownloadPlan(SECRET, request.seeds[0], request.seeds[0], "video", "clip.mp4", None)
+            return CrawlResult(plans=(plan,), requested=1, discovered=1)
+
+    result = run_command(
+        "crawl",
+        "sample",
+        registry(ResultEngine()),
+        output_dir=tmp_path,
+        seeds=("https://sample.test/item",),
+    )
+    assert isinstance(result, CrawlResult)
+    history = (tmp_path / "history.jsonl").read_text(encoding="utf-8")
+    assert SECRET not in history
+    record = json.loads(history)
+    assert record["kind"] == "crawl"
+    assert record["status"] == "succeeded"
+    assert (record["requested"], record["discovered"], record["completed"]) == (1, 1, 0)

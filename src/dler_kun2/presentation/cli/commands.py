@@ -3,14 +3,18 @@
 from __future__ import annotations
 
 import asyncio
+import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 from dler_kun2.application.crawl import crawl
 from dler_kun2.application.download import download, download_many
 from dler_kun2.application.ranking import ranking
 from dler_kun2.domain.errors import EngineError, ErrorCode
+from dler_kun2.domain.models import CrawlResult, DownloadResult
 from dler_kun2.domain.types import EngineOptions
 from dler_kun2.infrastructure.state.config import ConfigStore
+from dler_kun2.infrastructure.state.history import HistoryStore
 from dler_kun2.infrastructure.state.jobs import JobStore
 from dler_kun2.infrastructure.state.paths import state_dir
 from dler_kun2.infrastructure.storage.transfer import TransferService
@@ -22,9 +26,33 @@ def run_command(command: str, target: str | None, registry: EngineRegistry, *, o
 
     def execute(coroutine, kind: str):
         store = JobStore(state_dir() / "jobs.sqlite3")
+        history = HistoryStore(state_dir() / "history.jsonl")
         job_id = store.create(kind)
         if not store.transition(job_id, "running"):
             raise RuntimeError("new job could not enter running state")
+
+        def record(status: str, result: object | None = None, error: EngineError | None = None) -> None:
+            entry: dict[str, object] = {
+                "job_id": job_id,
+                "kind": kind,
+                "status": status,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "error_codes": [item.code.value for item in result.errors] if isinstance(result, (CrawlResult, DownloadResult)) else [],
+            }
+            if isinstance(result, (CrawlResult, DownloadResult)):
+                entry.update(
+                    requested=result.requested,
+                    discovered=result.discovered,
+                    completed=result.completed,
+                    unavailable=result.unavailable,
+                    output_paths=[str(path) for path in result.output_paths],
+                )
+            if error is not None:
+                entry["error_codes"] = [error.code.value]
+            try:
+                history.append(entry)
+            except OSError:
+                print("[WARNING] job history could not be saved", file=sys.stderr)
 
         async def managed():
             try:
@@ -34,17 +62,24 @@ def run_command(command: str, target: str | None, registry: EngineRegistry, *, o
                     if task in done:
                         result = await task
                         store.transition(job_id, "succeeded")
+                        record("succeeded", result)
                         return result
                     if await asyncio.to_thread(store.is_cancelled, job_id):
                         task.cancel()
                         await asyncio.gather(task, return_exceptions=True)
                         store.transition(job_id, "cancelled")
-                        return EngineError(ErrorCode.CANCELLED, "job was cancelled")
+                        error = EngineError(ErrorCode.CANCELLED, "job was cancelled")
+                        record("cancelled", error=error)
+                        return error
             except asyncio.CancelledError:
                 store.transition(job_id, "cancelled")
-                return EngineError(ErrorCode.CANCELLED, "job was cancelled")
-            except BaseException:
+                error = EngineError(ErrorCode.CANCELLED, "job was cancelled")
+                record("cancelled", error=error)
+                return error
+            except BaseException as exc:
                 store.transition(job_id, "failed")
+                error = exc.error if isinstance(exc, RouteError) else exc if isinstance(exc, EngineError) else EngineError(ErrorCode.DOWNLOAD_FAILED, "operation failed")
+                record("failed", error=error)
                 raise
             finally:
                 if runtime is not None:
