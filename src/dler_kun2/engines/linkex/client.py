@@ -57,7 +57,12 @@ class LinkexClient:
             "X-LinkInflu-App-Lang": "ja",
             "X-LinkInflu-Ts": timestamp,
         }
-        header_hash = hashlib.md5("&".join(f"{key.lower()}={value}" for key, value in sorted(headers.items())).encode()).hexdigest()
+        signed_headers = sorted(
+            f"{name.lower()}={value}"
+            for name, value in headers.items()
+            if name.lower().startswith("x-linkinflu-") and name.lower() != "x-linkinflu-ts"
+        )
+        header_hash = hashlib.md5("&".join(signed_headers).encode()).hexdigest()
         headers["X-LinkInflu-Sign"] = hashlib.md5(f"path={path_query}&header={header_hash}&body=&key={self._api_key}".encode()).hexdigest()
         return headers
 

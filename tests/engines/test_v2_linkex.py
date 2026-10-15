@@ -19,13 +19,18 @@ def test_parser_handles_malformed_items_and_signed_url_shape():
     assert error.value.code is ErrorCode.NETWORK_ERROR
 
 
-def test_linkex_signing_matches_v1_algorithm_and_does_not_log_key():
+def test_linkex_signing_matches_current_bundle_contract_and_does_not_log_key():
     key = "test-api-key"
     client = LinkexClient(object(), key, clock=lambda: 1234)  # type: ignore[arg-type]
     path = "/api/drive/v1/share/get?share_token=ABCD"
     headers = client._headers(path)
     base = {"Content-Type": "application/json", "X-LinkInflu-App": "linkex", "X-LinkInflu-App-Lang": "ja", "X-LinkInflu-Ts": "1234"}
-    hashed = hashlib.md5("&".join(f"{name.lower()}={value}" for name, value in sorted(base.items())).encode()).hexdigest()
+    signed_headers = sorted(
+        f"{name.lower()}={value}"
+        for name, value in base.items()
+        if name.lower().startswith("x-linkinflu-") and name.lower() != "x-linkinflu-ts"
+    )
+    hashed = hashlib.md5("&".join(signed_headers).encode()).hexdigest()
     expected = hashlib.md5(f"path={path}&header={hashed}&body=&key={key}".encode()).hexdigest()
     assert headers["X-LinkInflu-Sign"] == expected
     assert key not in repr(headers)
