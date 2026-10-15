@@ -2,6 +2,8 @@
 
 import sqlite3
 import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -26,10 +28,15 @@ class JobStore:
                 "status TEXT NOT NULL, cancel_requested INTEGER NOT NULL DEFAULT 0)"
             )
 
-    def _connect(self):
+    @contextmanager
+    def _connect(self) -> Iterator[sqlite3.Connection]:
         connection = sqlite3.connect(self.database, timeout=10)
-        connection.execute("PRAGMA journal_mode=WAL")
-        return connection
+        try:
+            connection.execute("PRAGMA journal_mode=WAL")
+            with connection:
+                yield connection
+        finally:
+            connection.close()
 
     def create(self, kind: str) -> str:
         job_id = uuid.uuid4().hex

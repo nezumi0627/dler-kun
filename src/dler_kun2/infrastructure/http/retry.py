@@ -2,13 +2,15 @@
 
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
+from math import isfinite
 
 
 def retry_after_seconds(value: str | None, *, now: datetime | None = None) -> float | None:
     if not value:
         return None
     try:
-        return max(0.0, float(value.strip()))
+        seconds = float(value.strip())
+        return max(0.0, seconds) if isfinite(seconds) else None
     except ValueError:
         try:
             retry_at = parsedate_to_datetime(value)

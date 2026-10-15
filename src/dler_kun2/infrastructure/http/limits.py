@@ -33,17 +33,63 @@ class OriginLimiter:
         default = 80 if parsed.scheme == "http" else 443
         return f"{parsed.scheme}://{parsed.hostname.lower()}:{port or default}"
 
-    async def acquire(self, url: str) -> asyncio.Semaphore:
+    async def acquire(
+        self, url: str, cancel: asyncio.Event | None = None
+    ) -> asyncio.Semaphore:
         origin = self.origin(url)
         semaphore = self._semaphores[origin]
-        await semaphore.acquire()
-        wait = self._blocked_until.get(origin, 0.0) - time.monotonic()
-        if wait > 0:
-            if wait > self.max_wait:
+        acquired = False
+        cancel_task = None
+        acquire_task = None
+        try:
+            if cancel is not None and cancel.is_set():
+                raise asyncio.CancelledError
+            if cancel is None:
+                await semaphore.acquire()
+            else:
+                acquire_task = asyncio.create_task(semaphore.acquire())
+                cancel_task = asyncio.create_task(cancel.wait())
+                done, _ = await asyncio.wait(
+                    (acquire_task, cancel_task), return_when=asyncio.FIRST_COMPLETED
+                )
+                if cancel_task in done and cancel.is_set():
+                    if acquire_task.done() and not acquire_task.cancelled():
+                        acquired = True
+                    else:
+                        acquire_task.cancel()
+                    raise asyncio.CancelledError
+                acquire_task.result()
+            acquired = True
+            wait = self._blocked_until.get(origin, 0.0) - time.monotonic()
+            if wait > 0:
+                if wait > self.max_wait:
+                    raise RetryDeferred(wait)
+                if cancel is None:
+                    await asyncio.sleep(wait)
+                else:
+                    try:
+                        await asyncio.wait_for(cancel.wait(), timeout=wait)
+                    except TimeoutError:
+                        pass
+                    if cancel.is_set():
+                        raise asyncio.CancelledError
+            return semaphore
+        except BaseException:
+            if acquire_task is not None and not acquire_task.done():
+                acquire_task.cancel()
+            if (
+                not acquired
+                and acquire_task is not None
+                and acquire_task.done()
+                and not acquire_task.cancelled()
+            ):
+                acquired = True
+            if acquired:
                 semaphore.release()
-                raise RetryDeferred(wait)
-            await asyncio.sleep(wait)
-        return semaphore
+            raise
+        finally:
+            if cancel_task is not None:
+                cancel_task.cancel()
 
     def defer(self, url: str, retry_after: str | None) -> float | None:
         seconds = retry_after_seconds(retry_after)

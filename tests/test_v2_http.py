@@ -7,7 +7,7 @@ from aiohttp import web
 from aiohttp.test_utils import TestServer
 
 from dler_kun2.domain.errors import ErrorCode
-from dler_kun2.infrastructure.http.client import HttpRuntime
+from dler_kun2.infrastructure.http.client import HttpError, HttpRuntime
 from dler_kun2.infrastructure.http.limits import OriginLimiter, RetryDeferred
 from dler_kun2.infrastructure.http.retry import retry_after_seconds
 
@@ -24,6 +24,41 @@ def test_origin_limiter_refuses_wait_above_cap():
     with pytest.raises(RetryDeferred) as exc:
         limiter.defer("https://example.test/x", "10")
     assert exc.value.retry_after == 10
+
+
+def test_origin_limiter_releases_slot_when_retry_wait_is_cancelled():
+    async def scenario():
+        limiter = OriginLimiter(concurrency=1)
+        url = "https://example.test/item"
+        limiter.defer(url, "30")
+        cancel = asyncio.Event()
+        task = asyncio.create_task(limiter.acquire(url, cancel=cancel))
+        await asyncio.sleep(0.01)
+        cancel.set()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(task, 0.2)
+        assert limiter._semaphores[limiter.origin(url)]._value == 1
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("url", ["https://user:pass@example.test/", "https://:pass@example.test/"])
+def test_http_runtime_rejects_any_url_userinfo(url):
+    async def scenario():
+        runtime = HttpRuntime()
+        try:
+            with pytest.raises(HttpError) as exc:
+                await runtime.request("GET", url)
+            assert exc.value.code is ErrorCode.INVALID_REQUEST
+        finally:
+            await runtime.close()
+
+    asyncio.run(scenario())
+
+
+def test_retry_after_rejects_nonfinite_values():
+    assert retry_after_seconds("inf") is None
+    assert retry_after_seconds("-inf") is None
 
 
 def test_http_runtime_pools_and_normalizes_rate_limit():
@@ -60,9 +95,9 @@ def test_http_runtime_enforces_total_timeout():
         await server.start_server()
         runtime = HttpRuntime(total_timeout=0.01)
         try:
-            with pytest.raises(Exception) as exc:
+            with pytest.raises(HttpError) as exc:
                 await runtime.request("GET", str(server.make_url("/")))
-            assert getattr(exc.value, "code", None) is ErrorCode.NETWORK_ERROR
+            assert exc.value.code is ErrorCode.NETWORK_ERROR
         finally:
             await runtime.close()
             await server.close()
@@ -95,6 +130,34 @@ def test_http_runtime_cancellation_stops_request():
     asyncio.run(scenario())
 
 
+def test_http_runtime_cancellation_interrupts_origin_retry_wait():
+    async def scenario():
+        async def limited(_request):
+            return web.Response(status=429, headers={"Retry-After": "30"})
+
+        app = web.Application()
+        app.router.add_get("/", limited)
+        server = TestServer(app)
+        await server.start_server()
+        runtime = HttpRuntime(max_retry_wait=60)
+        url = str(server.make_url("/"))
+        cancel = asyncio.Event()
+        try:
+            with pytest.raises(HttpError) as exc:
+                await runtime.request("GET", url)
+            assert exc.value.code is ErrorCode.RATE_LIMITED
+            task = asyncio.create_task(runtime.request("GET", url, cancel=cancel))
+            await asyncio.sleep(0.01)
+            cancel.set()
+            with pytest.raises(asyncio.CancelledError):
+                await asyncio.wait_for(task, 0.2)
+        finally:
+            await runtime.close()
+            await server.close()
+
+    asyncio.run(scenario())
+
+
 def test_http_runtime_rejects_unsafe_redirect():
     async def scenario():
         async def redirect(_request):
@@ -108,6 +171,50 @@ def test_http_runtime_rejects_unsafe_redirect():
         try:
             with pytest.raises(Exception):
                 await runtime.request("GET", str(server.make_url("/")))
+        finally:
+            await runtime.close()
+            await server.close()
+
+    asyncio.run(scenario())
+
+
+def test_http_runtime_rejects_redirect_with_password_only_userinfo():
+    async def scenario():
+        async def redirect(request):
+            target = str(request.url.with_path("/target"))
+            target = target.replace("http://", "http://:secret@", 1)
+            raise web.HTTPFound(target)
+
+        app = web.Application()
+        app.router.add_get("/", redirect)
+        server = TestServer(app)
+        await server.start_server()
+        runtime = HttpRuntime()
+        try:
+            with pytest.raises(HttpError) as exc:
+                await runtime.request("GET", str(server.make_url("/")))
+            assert exc.value.code is ErrorCode.INVALID_REQUEST
+        finally:
+            await runtime.close()
+            await server.close()
+
+    asyncio.run(scenario())
+
+
+def test_http_runtime_rejects_error_status_instead_of_returning_body():
+    async def scenario():
+        async def failed(_request):
+            return web.Response(status=503, text="error body")
+
+        app = web.Application()
+        app.router.add_get("/", failed)
+        server = TestServer(app)
+        await server.start_server()
+        runtime = HttpRuntime()
+        try:
+            with pytest.raises(Exception) as exc:
+                await runtime.request("GET", str(server.make_url("/")))
+            assert getattr(exc.value, "code", None) is ErrorCode.NETWORK_ERROR
         finally:
             await runtime.close()
             await server.close()

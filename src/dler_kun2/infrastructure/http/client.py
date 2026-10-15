@@ -98,13 +98,18 @@ class HttpRuntime:
         **kwargs: Any,
     ) -> LimitedResponse:
         parsed = urlsplit(url)
-        if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username:
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.hostname
+            or parsed.username is not None
+            or parsed.password is not None
+        ):
             raise HttpError(ErrorCode.INVALID_REQUEST, "only HTTP(S) URLs without credentials are allowed")
         session = await self._get_session()
         current = url
         for redirect_count in range(self.max_redirects + 1):
             try:
-                semaphore = await self.limiter.acquire(current)
+                semaphore = await self.limiter.acquire(current, cancel=cancel)
             except RetryDeferred as exc:
                 raise HttpError(
                     ErrorCode.RATE_LIMITED, "origin retry window exceeds configured maximum", exc.retry_after
@@ -131,6 +136,9 @@ class HttpRuntime:
             except (aiohttp.ClientError, TimeoutError) as exc:
                 semaphore.release()
                 raise HttpError(ErrorCode.NETWORK_ERROR, "HTTP request failed") from exc
+            except Exception as exc:
+                semaphore.release()
+                raise HttpError(ErrorCode.NETWORK_ERROR, "HTTP request failed") from exc
             finally:
                 if cancel_task is not None:
                     cancel_task.cancel()
@@ -150,7 +158,12 @@ class HttpRuntime:
                     raise HttpError(ErrorCode.NETWORK_ERROR, "invalid or excessive redirect")
                 destination = urljoin(current, location)
                 dest = urlsplit(destination)
-                if dest.scheme not in {"http", "https"} or not dest.hostname or dest.username:
+                if (
+                    dest.scheme not in {"http", "https"}
+                    or not dest.hostname
+                    or dest.username is not None
+                    or dest.password is not None
+                ):
                     raise HttpError(ErrorCode.INVALID_REQUEST, "unsafe redirect destination")
                 if urlsplit(current).scheme == "https" and dest.scheme != "https":
                     raise HttpError(ErrorCode.INVALID_REQUEST, "HTTPS redirect cannot downgrade to HTTP")
@@ -174,6 +187,10 @@ class HttpRuntime:
                 response.release()
                 semaphore.release()
                 raise HttpError(ErrorCode.AUTH_REQUIRED, "server requires authorization")
+            if not 200 <= response.status < 300:
+                response.release()
+                semaphore.release()
+                raise HttpError(ErrorCode.NETWORK_ERROR, "server returned an unsuccessful status")
             return LimitedResponse(response, semaphore)
         raise HttpError(ErrorCode.NETWORK_ERROR, "redirect limit exceeded")
 
