@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 from urllib.parse import urlsplit
 
 from dler_kun2.domain.contracts import Engine
 from dler_kun2.domain.errors import EngineError, ErrorCode
-from dler_kun2.infrastructure.http.client import HttpRuntime
+
+if TYPE_CHECKING:
+    from dler_kun2.infrastructure.http.client import HttpRuntime
 
 from .rules import PathPrefix, RouteRule
 
