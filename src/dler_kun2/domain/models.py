@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .errors import EngineError
+from .plans import DownloadPlan
 
 
 def _validate_counts(
@@ -46,6 +47,7 @@ class DownloadResult:
 
 @dataclass(frozen=True)
 class CrawlResult:
+    plans: tuple[DownloadPlan, ...] = ()
     output_paths: tuple[Path, ...] = ()
     requested: int = 0
     discovered: int = 0
@@ -54,6 +56,7 @@ class CrawlResult:
     errors: tuple[EngineError, ...] = ()
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "plans", tuple(self.plans))
         object.__setattr__(self, "output_paths", tuple(self.output_paths))
         object.__setattr__(self, "errors", tuple(self.errors))
         _validate_counts(
@@ -63,3 +66,14 @@ class CrawlResult:
             self.completed,
             self.unavailable,
         )
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "plans": [plan.to_dict() for plan in self.plans],
+            "output_paths": [str(path) for path in self.output_paths],
+            "requested": self.requested,
+            "discovered": self.discovered,
+            "completed": self.completed,
+            "unavailable": self.unavailable,
+            "errors": [error.to_dict() for error in self.errors],
+        }

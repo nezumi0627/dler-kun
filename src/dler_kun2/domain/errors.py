@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+from math import isfinite
 
 
 class ErrorCode(str, Enum):
@@ -27,8 +28,10 @@ class EngineError:
     retry_after: float | None = None
 
     def __post_init__(self) -> None:
-        if self.retry_after is not None and self.retry_after < 0:
-            raise ValueError("retry_after must be nonnegative")
+        if self.retry_after is not None and (
+            not isfinite(self.retry_after) or self.retry_after < 0
+        ):
+            raise ValueError("retry_after must be finite and nonnegative")
 
     def to_dict(self) -> dict[str, str | float | None]:
         return {

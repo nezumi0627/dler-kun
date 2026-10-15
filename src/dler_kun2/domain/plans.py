@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 
-from .contracts import EngineOptionValue, freeze_options
+from .types import EngineOptionValue, freeze_options
 
 
 @dataclass(frozen=True)

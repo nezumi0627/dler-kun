@@ -1,3 +1,4 @@
+import json
 from dataclasses import FrozenInstanceError
 from pathlib import Path
 
@@ -28,6 +29,12 @@ def test_engine_error_serializes_common_code_and_retry_delay() -> None:
     }
 
 
+def test_engine_error_rejects_non_finite_retry_delay() -> None:
+    for delay in (-1.0, float("nan"), float("inf"), float("-inf")):
+        with pytest.raises(ValueError):
+            EngineError(ErrorCode.RATE_LIMITED, "try later", retry_after=delay)
+
+
 def test_plan_repr_and_public_serialization_hide_signed_media_url() -> None:
     secret = "https://cdn.example/movie.mp4?signature=private"
     plan = DownloadPlan(
@@ -47,8 +54,8 @@ def test_plan_repr_and_public_serialization_hide_signed_media_url() -> None:
 
 def test_requests_and_capabilities_are_immutable() -> None:
     source_options = {"parallel": 2}
-    request = DownloadRequest("https://example.com/a", Path("downloads"), source_options)
-    crawl = CrawlRequest("85xo", ("latest",), None, False, source_options)
+    request = DownloadRequest("https://example.com/a", source_options)
+    crawl = CrawlRequest("85xo", ("latest",), None, source_options)
     capabilities = EngineCapabilities(download=True, crawl=True)
     source_options["parallel"] = 9
 
@@ -63,7 +70,7 @@ def test_requests_and_capabilities_are_immutable() -> None:
 def test_request_rejects_non_json_option_values() -> None:
     for value in (float("nan"), float("inf"), {"nested": "value"}):
         with pytest.raises(ValueError):
-            DownloadRequest("https://example.com/a", Path("downloads"), {"bad": value})
+            DownloadRequest("https://example.com/a", {"bad": value})
 
 
 def test_partial_results_keep_counts_paths_and_typed_errors() -> None:
@@ -78,6 +85,7 @@ def test_partial_results_keep_counts_paths_and_typed_errors() -> None:
         errors=(error,),
     )
     crawl = CrawlResult(
+        plans=(),
         output_paths=(output,),
         requested=2,
         discovered=3,
@@ -97,3 +105,24 @@ def test_result_rejects_counts_that_claim_more_outputs_than_discovered() -> None
         DownloadResult(requested=1, discovered=1, completed=1, unavailable=1)
     with pytest.raises(ValueError):
         CrawlResult(requested=1, discovered=1, completed=1, output_paths=())
+
+
+def test_crawl_result_retains_discovered_plans_without_download() -> None:
+    secret = "https://cdn.example/movie.mp4?signature=private"
+    plan = DownloadPlan(
+        media_url=secret,
+        source_url="https://example.com/post/1",
+        source_page="https://example.com/post/1",
+        media_kind="video",
+        suggested_name="movie.mp4",
+        size=None,
+        metadata={},
+    )
+    result = CrawlResult(plans=(plan,), requested=1, discovered=1)
+
+    assert result.plans == (plan,)
+    assert result.completed == 0
+    assert result.output_paths == ()
+    assert result.to_dict()["plans"][0]["suggested_name"] == "movie.mp4"
+    assert secret not in repr(result)
+    assert secret not in json.dumps(result.to_dict(), allow_nan=False)

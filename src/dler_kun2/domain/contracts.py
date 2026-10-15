@@ -2,34 +2,17 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from dataclasses import dataclass, field
-from math import isfinite
-from pathlib import Path
-from types import MappingProxyType
 from typing import Protocol
 
-from .models import CrawlResult, DownloadResult
-
-EngineOptionValue = str | int | float | bool | None
-EngineOptions = Mapping[str, EngineOptionValue]
-
-
-def freeze_options(options: EngineOptions) -> EngineOptions:
-    """Take an immutable snapshot at the engine boundary."""
-    values = dict(options)
-    for key, value in values.items():
-        if not isinstance(key, str) or not (
-            value is None or isinstance(value, (str, int, float, bool))
-        ) or (isinstance(value, float) and not isfinite(value)):
-            raise ValueError("engine options must contain JSON scalar values")
-    return MappingProxyType(values)
+from .models import CrawlResult
+from .plans import DownloadPlan
+from .types import EngineOptions, freeze_options
 
 
 @dataclass(frozen=True)
 class DownloadRequest:
     url: str
-    output_dir: Path
     options: EngineOptions = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -41,7 +24,6 @@ class CrawlRequest:
     engine_id: str
     seeds: tuple[str, ...]
     days: int | None
-    download: bool
     options: EngineOptions = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -62,7 +44,7 @@ class Engine(Protocol):
     engine_id: str
     capabilities: EngineCapabilities
 
-    async def download(self, request: DownloadRequest) -> DownloadResult: ...
+    async def resolve_download(self, request: DownloadRequest) -> DownloadPlan: ...
 
     async def crawl(self, request: CrawlRequest) -> CrawlResult: ...
 
