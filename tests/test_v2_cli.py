@@ -65,6 +65,20 @@ def test_crawl_retains_plans_and_only_transfers_on_request(tmp_path):
     assert saved.completed == 1 and saved.plans == found.plans
 
 
+def test_crawl_uses_engine_plan_downloader_for_browser_bound_media(tmp_path):
+    class BrowserEngine(Engine):
+        async def crawl(self, request):
+            return CrawlResult(plans=(DownloadPlan("https://player.example/embed", "https://mixi.test/", "https://mixi.test/1", "browser_hls", "clip.mp4", None),), requested=1, discovered=1)
+
+        async def download_plan(self, plan, output_dir):
+            assert plan.media_kind == "browser_hls"
+            return output_dir / plan.suggested_name
+
+    result = asyncio.run(crawl("sample", (), None, tmp_path, registry(BrowserEngine()), Transfer(), download_items=True))
+    assert result.completed == 1
+    assert result.output_paths == (tmp_path / "clip.mp4",)
+
+
 def test_unsupported_capability_is_typed(tmp_path):
     with pytest.raises(RouteError) as exc:
         from dler_kun2.application.ranking import ranking
@@ -75,7 +89,7 @@ def test_unsupported_capability_is_typed(tmp_path):
 def test_cli_sites_json_reports_verified_engines(capsys):
     assert main(["sites", "--json"]) == 0
     ids = {item["engine_id"] for item in json.loads(capsys.readouterr().out)["sites"]}
-    assert ids == {"85xo", "linkex", "videy"}
+    assert ids == {"85xo", "linkex", "mixixxx", "videy"}
 
 
 @pytest.mark.parametrize("command", ["detect", "download", "crawl", "ranking", "jobs", "cancel", "config"])

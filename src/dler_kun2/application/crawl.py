@@ -19,7 +19,23 @@ async def crawl(engine_id: str, seeds: tuple[str, ...], days: int | None, output
     result = await engine.crawl(CrawlRequest(engine_id, seeds, days, options or {}))
     if not download_items:
         return result
-    if transfer is None:
+    download_plan = getattr(engine, "download_plan", None)
+    if transfer is None and not callable(download_plan):
         raise RouteError(EngineError(ErrorCode.DEPENDENCY_MISSING, "transfer service is pending"))
-    paths = tuple([await transfer.transfer(plan, output_dir) for plan in result.plans])
-    return CrawlResult(plans=result.plans, output_paths=result.output_paths + paths, requested=result.requested, discovered=result.discovered, completed=result.completed + len(paths), unavailable=result.unavailable, errors=result.errors)
+    paths = list(result.output_paths)
+    errors = list(result.errors)
+    for plan in result.plans:
+        try:
+            if callable(download_plan):
+                paths.append(await download_plan(plan, output_dir))
+            else:
+                paths.append(await transfer.transfer(plan, output_dir))
+        except EngineError as exc:
+            errors.append(exc)
+        except Exception as exc:
+            from dler_kun2.infrastructure.http.client import HttpError
+
+            code = exc.code if isinstance(exc, HttpError) else ErrorCode.DOWNLOAD_FAILED
+            retry_after = exc.retry_after if isinstance(exc, HttpError) else None
+            errors.append(EngineError(code, "media transfer failed", retry_after))
+    return CrawlResult(plans=result.plans, output_paths=tuple(paths), requested=result.requested, discovered=result.discovered, completed=len(paths), unavailable=result.unavailable, errors=tuple(errors))

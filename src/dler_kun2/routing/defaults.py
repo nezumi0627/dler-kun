@@ -7,6 +7,7 @@ from urllib.parse import urlsplit
 from dler_kun2.domain.contracts import Engine
 from dler_kun2.engines.linkex.adapter import LinkexEngine
 from dler_kun2.engines.linkex.client import LinkexClient
+from dler_kun2.engines.mixixxx.adapter import MixixxxEngine
 from dler_kun2.engines.videy.adapter import VideyEngine
 from dler_kun2.engines.xo85.adapter import Xo85Engine
 from dler_kun2.infrastructure.http.client import HttpRuntime
@@ -29,6 +30,10 @@ def build_registry(registry: EngineRegistry | None = None, *, videy: Engine | No
                 backend_probe=lambda url: urlsplit(url).path.startswith("/i/"),
             )
         ],
+    )
+    registry.register(
+        MixixxxEngine(runtime),
+        [RouteRule("mixixxx", ("mixi-xxx.cc", "www.mixi-xxx.cc", "jav-mixi.cc", "www.jav-mixi.cc"))],
     )
     registry.http_runtime = runtime
     # Twimg aliases remain quarantined until page/API evidence is representative.

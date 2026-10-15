@@ -72,7 +72,7 @@ def test_malformed_url_is_invalid_request(url):
     "twimg1.com", "twimg-album.com", "file-bio.com", "twfiles.com",
     "gofile.video", "gofile.trade", "gofile.bar", "gofile.pl",
     "cdn1.twimg-media.com", "video.twimg.news", "video.twimg.it.com",
-    "mixi-xxx.cc", "l2e.click",
+    "l2e.click",
 ])
 def test_unverified_legacy_alias_is_ambiguous(host):
     with pytest.raises(RouteError) as exc:
@@ -83,7 +83,7 @@ def test_unverified_legacy_alias_is_ambiguous(host):
 def test_every_legacy_host_is_verified_or_quarantined():
     legacy_hosts = set().union(*(set(hosts) for hosts in ServiceDetector().supported_domains().values()))
     assert legacy_hosts == UNVERIFIED_HOSTS | {
-        "gofile.io", "gofile-douga.com", "85po.net", "videy.co"
+        "gofile.io", "gofile-douga.com", "85po.net", "videy.co", "mixi-xxx.cc"
     }
 
 

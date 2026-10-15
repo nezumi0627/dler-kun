@@ -21,7 +21,7 @@ UNVERIFIED_HOSTS = frozenset({
     "twimg1.com", "twimg-album.com", "file-bio.com", "twfiles.com",
     "gofile.video", "gofile.trade", "gofile.bar", "gofile.pl",
     "cdn1.twimg-media.com", "video.twimg.news", "video.twimg.it.com",
-    "mixi-xxx.cc", "l2e.click",
+    "l2e.click",
 })
 
 
