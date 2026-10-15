@@ -1,6 +1,7 @@
 import json
 from dataclasses import FrozenInstanceError
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -12,6 +13,7 @@ from dler_kun2.domain.contracts import (
 from dler_kun2.domain.errors import EngineError, ErrorCode
 from dler_kun2.domain.models import CrawlResult, DownloadResult
 from dler_kun2.domain.plans import DownloadPlan
+from dler_kun2.domain.types import EngineOptionValue
 
 
 def test_engine_error_serializes_common_code_and_retry_delay() -> None:
@@ -62,15 +64,17 @@ def test_requests_and_capabilities_are_immutable() -> None:
     assert request.options["parallel"] == 2
     assert crawl.options["parallel"] == 2
     with pytest.raises(TypeError):
-        request.options["parallel"] = 3
+        cast(dict[str, EngineOptionValue], request.options)["parallel"] = 3
     with pytest.raises(FrozenInstanceError):
-        capabilities.download = False
+        capabilities.download = False  # type: ignore[reportAttributeAccessIssue]
 
 
 def test_request_rejects_non_json_option_values() -> None:
     for value in (float("nan"), float("inf"), {"nested": "value"}):
         with pytest.raises(ValueError):
-            DownloadRequest("https://example.com/a", {"bad": value})
+            DownloadRequest(
+                "https://example.com/a", {"bad": cast(EngineOptionValue, value)}
+            )
 
 
 def test_partial_results_keep_counts_paths_and_typed_errors() -> None:
@@ -123,6 +127,7 @@ def test_crawl_result_retains_discovered_plans_without_download() -> None:
     assert result.plans == (plan,)
     assert result.completed == 0
     assert result.output_paths == ()
-    assert result.to_dict()["plans"][0]["suggested_name"] == "movie.mp4"
+    plans = cast(list[dict[str, object]], result.to_dict()["plans"])
+    assert plans[0]["suggested_name"] == "movie.mp4"
     assert secret not in repr(result)
     assert secret not in json.dumps(result.to_dict(), allow_nan=False)
