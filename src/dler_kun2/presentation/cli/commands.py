@@ -9,11 +9,12 @@ from dler_kun2.application.crawl import crawl
 from dler_kun2.application.download import download
 from dler_kun2.application.ranking import ranking
 from dler_kun2.domain.errors import EngineError, ErrorCode
+from dler_kun2.infrastructure.state.config import ConfigStore
 from dler_kun2.infrastructure.storage.transfer import TransferService
 from dler_kun2.routing.registry import EngineRegistry, RouteError
 
 
-def run_command(command: str, target: str | None, registry: EngineRegistry, *, output_dir: Path, download_items: bool = False, seeds: tuple[str, ...] = (), days: int | None = None) -> object:
+def run_command(command: str, target: str | None, registry: EngineRegistry, *, output_dir: Path, download_items: bool = False, seeds: tuple[str, ...] = (), days: int | None = None, save_config: bool = False) -> object:
     runtime = registry.http_runtime
 
     def execute(coroutine):
@@ -34,6 +35,11 @@ def run_command(command: str, target: str | None, registry: EngineRegistry, *, o
             raise RouteError(EngineError(ErrorCode.INVALID_REQUEST, "URL is required"))
         engine = registry.resolve(target)
         return {"engine_id": engine.engine_id}
+    if command == "config":
+        config = ConfigStore()
+        if save_config:
+            config.save()
+        return {"config": config.as_dict(), "saved": save_config}
     if command == "download":
         if target is None:
             raise RouteError(EngineError(ErrorCode.INVALID_REQUEST, "URL is required"))

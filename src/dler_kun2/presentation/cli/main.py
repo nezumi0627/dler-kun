@@ -25,6 +25,8 @@ def main(argv: list[str] | None = None) -> int:
             command.add_argument("--seed", action="append", default=[])
         if name == "crawl":
             command.add_argument("--days", type=int)
+        if name == "config":
+            command.add_argument("--save", action="store_true", help="Write the effective config.json")
         command.add_argument("--json", action="store_true")
         if name in {"download", "crawl", "ranking"}:
             command.add_argument("-o", "--output-dir", type=Path, default=Path("downloads"))
@@ -33,7 +35,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     json_mode = args.global_json or args.json
     try:
-        value = run_command(args.command, getattr(args, "service", getattr(args, "target", None)), build_registry(EngineRegistry()), output_dir=getattr(args, "output_dir", Path("downloads")), download_items=getattr(args, "download", False), seeds=tuple(getattr(args, "seed", ())), days=getattr(args, "days", None))
+        value = run_command(args.command, getattr(args, "service", getattr(args, "target", None)), build_registry(EngineRegistry()), output_dir=getattr(args, "output_dir", Path("downloads")), download_items=getattr(args, "download", False), seeds=tuple(getattr(args, "seed", ())), days=getattr(args, "days", None), save_config=getattr(args, "save", False))
     except RouteError as exc:
         value = exc.error
     except EngineError as exc:
