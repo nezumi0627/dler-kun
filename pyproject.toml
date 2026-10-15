@@ -51,4 +51,4 @@ pythonVersion = "3.10"
 typeCheckingMode = "basic"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/dler_kun"]
+packages = ["src/dler_kun", "src/dler_kun2"]
