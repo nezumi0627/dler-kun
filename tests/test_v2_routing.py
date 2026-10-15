@@ -63,14 +63,13 @@ def test_malformed_url_is_invalid_request(url):
 
 
 @pytest.mark.parametrize("host", [
-    "gofilelab.com", "gofile.run", "85xo.com", "85po.com",
-    "mvfile.com", "file-photo.com", "tweetfile.com", "gofile.website",
-    "image-share.cc", "tweetplay.com", "imagedist.com", "gofile.rocks",
+    "gofilelab.com", "85xo.com", "85po.com",
+    "mvfile.com", "file-photo.com",
     "gofile.host", "gofile.guru", "gofile.name", "mediasplayer.com",
     "twimg-media.com", "media-twimg.com", "twimg.jp", "video.twimg.jp",
     "video.twimg-image.com", "video.twimg1.com", "cdn.twimg1.com",
     "twimg1.com", "twimg-album.com", "file-bio.com", "twfiles.com",
-    "gofile.video", "gofile.trade", "gofile.bar", "gofile.pl",
+    "gofile.video", "gofile.trade",
     "cdn1.twimg-media.com", "video.twimg.news", "video.twimg.it.com",
     "l2e.click",
 ])
@@ -83,14 +82,16 @@ def test_unverified_legacy_alias_is_ambiguous(host):
 def test_every_legacy_host_is_verified_or_quarantined():
     legacy_hosts = set().union(*(set(hosts) for hosts in ServiceDetector().supported_domains().values()))
     assert legacy_hosts == UNVERIFIED_HOSTS | {
-        "gofile.io", "gofile-douga.com", "85po.net", "videy.co", "mixi-xxx.cc"
+        "gofile.io", "gofile-douga.com", "gofile.run", "85po.net", "videy.co", "mixi-xxx.cc",
+        "tweetfile.com", "gofile.website", "image-share.cc", "tweetplay.com",
+        "imagedist.com", "gofile.rocks", "gofile.bar", "gofile.pl",
     }
 
 
-def test_subdomain_of_unverified_alias_is_quarantined():
-    with pytest.raises(RouteError) as exc:
-        EngineRegistry().resolve("https://cdn2.image-share.cc/k3KlOo")
-    assert exc.value.error.code is ErrorCode.AMBIGUOUS_SERVICE
+def test_documented_cdn_alias_routes_to_mvfile():
+    from dler_kun2.routing.defaults import build_registry
+
+    assert build_registry().resolve("https://cdn2.image-share.cc/k3KlOo").engine_id == "mvfile"
 
 
 def test_path_predicate_failure_is_typed_and_redacted_in_cli(capsys, monkeypatch):
@@ -141,3 +142,14 @@ def test_disputed_host_needs_backend_probe_even_with_one_registration():
     proven = EngineRegistry()
     proven.register(FakeEngine("twimg"), [RouteRule("twimg", ("twimg.jp",), backend_probe=lambda url: "/verified/" in url)])
     assert proven.resolve("https://twimg.jp/verified/item").engine_id == "twimg"
+
+
+def test_default_registry_routes_verified_fun800_backends_only():
+    from dler_kun2.routing.defaults import build_registry
+
+    registry = build_registry()
+    assert registry.resolve("https://www.gofile.run/d/Abcd").engine_id == "gofilerun"
+    assert registry.resolve("https://www.image-share.cc/d/Abcd").engine_id == "mvfile"
+    assert registry.resolve("https://gofile.io/d/Abcd").engine_id == "gofile"
+    with pytest.raises(RouteError):
+        registry.resolve("https://gofilelab.com/ja/newest")

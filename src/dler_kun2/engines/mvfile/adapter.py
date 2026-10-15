@@ -26,7 +26,10 @@ def share_code(url: str) -> tuple[str, str]:
     parsed = urlsplit(url)
     if parsed.scheme not in {"http", "https"} or not parsed.hostname:
         raise EngineError(ErrorCode.INVALID_REQUEST, "invalid fun800 URL")
-    return parsed.hostname.lower(), _code(PurePosixPath(parsed.path).name)
+    host = parsed.hostname.lower()
+    if host.startswith("www."):
+        host = host[4:]
+    return host, _code(PurePosixPath(parsed.path).name)
 
 
 class MvfileEngine:

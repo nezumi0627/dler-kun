@@ -12,14 +12,12 @@ from .rules import PathPrefix, RouteRule
 # Legacy aliases not yet verified against a representative share page/API fixture.
 # This is a quarantine list, not an engine ownership declaration.
 UNVERIFIED_HOSTS = frozenset({
-    "gofilelab.com", "gofile.run", "85xo.com", "85po.com",
-    "mvfile.com", "file-photo.com", "tweetfile.com", "gofile.website",
-    "image-share.cc", "tweetplay.com", "imagedist.com", "gofile.rocks",
-    "gofile.host", "gofile.guru", "gofile.name", "mediasplayer.com",
+    "gofilelab.com", "85xo.com", "85po.com",
+    "mvfile.com", "file-photo.com", "gofile.host", "gofile.guru", "gofile.name", "mediasplayer.com",
     "twimg-media.com", "media-twimg.com", "twimg.jp", "video.twimg.jp",
     "video.twimg-image.com", "video.twimg1.com", "cdn.twimg1.com",
     "twimg1.com", "twimg-album.com", "file-bio.com", "twfiles.com",
-    "gofile.video", "gofile.trade", "gofile.bar", "gofile.pl",
+    "gofile.video", "gofile.trade",
     "cdn1.twimg-media.com", "video.twimg.news", "video.twimg.it.com",
     "l2e.click",
 })
