@@ -85,7 +85,19 @@ class MixixxxEngine:
                 ffmpeg_path=ffmpeg_path or self.ffmpeg_path,
                 timeout=timeout,
             )
-            await asyncio.to_thread(browser.download, plan.media_url, staging, concurrency=segment_concurrency)
+            worker = asyncio.create_task(
+                asyncio.to_thread(browser.download, plan.media_url, staging, concurrency=segment_concurrency)
+            )
+            try:
+                await asyncio.shield(worker)
+            except asyncio.CancelledError:
+                # The browser runs in a worker thread; join its bounded operation
+                # before deleting staging paths so Windows cannot race an open file.
+                try:
+                    await asyncio.wait_for(asyncio.shield(worker), timeout=timeout * 4 + 2)
+                except Exception:
+                    pass
+                raise
             os.replace(staging, output)
             return output
         except BrowserCaptureError as exc:

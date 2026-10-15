@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import shutil
 import socket
@@ -57,6 +58,8 @@ class BrowserHlsDownloader:
         self.timeout = timeout
 
     def download(self, embed_url: str, output: Path, *, concurrency: int = 4) -> Path:
+        if not math.isfinite(self.timeout) or not 1 <= self.timeout <= 600:
+            raise BrowserCaptureError("browser timeout must be between 1 and 600 seconds")
         if not self.browser_path:
             raise BrowserCaptureError("Chrome or Edge is required for mixi-xxx playback")
         if not self.ffmpeg_path:
@@ -66,6 +69,7 @@ class BrowserHlsDownloader:
         parsed = urlsplit(embed_url)
         if parsed.scheme != "https" or parsed.hostname not in {"luluvdo.com", "luluvido.com", "playmogo.com"}:
             raise BrowserCaptureError("unsupported embed provider")
+        deadline = time.monotonic() + self.timeout * 4
         with tempfile.TemporaryDirectory(prefix="dler-kun2-mixi-browser-") as temp:
             root = Path(temp)
             port = _free_port()
@@ -75,36 +79,29 @@ class BrowserHlsDownloader:
             )
             cdp = None
             try:
-                ws_url = _page_websocket(port, self.timeout)
+                ws_url = _page_websocket(port, _remaining(deadline))
                 cdp = _Cdp(ws_url, self.timeout)
-                cdp.call("Page.enable")
-                cdp.call("Network.enable")
-                cdp.call("Runtime.enable")
-                frame_id = cdp.call("Page.getFrameTree").get("frameTree", {}).get("frame", {}).get("id")
+                cdp.call("Page.enable", timeout=_remaining(deadline))
+                cdp.call("Network.enable", timeout=_remaining(deadline))
+                cdp.call("Runtime.enable", timeout=_remaining(deadline))
+                frame_id = cdp.call("Page.getFrameTree", timeout=_remaining(deadline)).get("frameTree", {}).get("frame", {}).get("id")
                 if not frame_id:
                     raise BrowserCaptureError("Chrome player frame is missing")
                 cdp.send("Page.navigate", {"url": embed_url})
-                playlist = _capture_playlist(cdp, embed_url, self.timeout)
+                playlist = _capture_playlist(cdp, embed_url, _remaining(deadline))
                 if not playlist:
                     raise BrowserCaptureError("HLS playlist was not observed")
                 headers = _cookie_headers(cdp, embed_url)
-                segments = _playlist_segments(cdp, playlist, frame_id, headers, self.timeout)
+                segments = _playlist_segments(cdp, playlist, frame_id, headers, _remaining(deadline), deadline=deadline)
                 if not segments:
                     raise BrowserCaptureError("HLS playlist contains no media segments")
-                fetched = _load_many(cdp, segments, frame_id, headers, concurrency, self.timeout)
-                segment_paths = []
-                for index, segment_url in enumerate(segments):
-                    status, body = fetched.get(segment_url, (None, b""))
-                    if status == 200 and body:
-                        segment_path = root / f"segment-{index:06d}.ts"
-                        segment_path.write_bytes(body)
-                        segment_paths.append(segment_path)
-                if not segment_paths:
-                    raise BrowserCaptureError("no HLS segments could be downloaded")
+                if len(segments) > 5000:
+                    raise BrowserCaptureError("HLS playlist exceeds the 5000-segment safety limit")
+                segment_paths = _load_many(cdp, segments, frame_id, headers, concurrency, _remaining(deadline), root, deadline=deadline)
                 concat = root / "segments.txt"
                 concat.write_text("\n".join(f"file '{path.as_posix()}'" for path in segment_paths), encoding="utf-8")
                 output.parent.mkdir(parents=True, exist_ok=True)
-                completed = subprocess.run([self.ffmpeg_path, "-y", "-nostdin", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", str(concat), "-c", "copy", str(output)], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=self.timeout * 3, check=False)
+                completed = subprocess.run([self.ffmpeg_path, "-y", "-nostdin", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", str(concat), "-c", "copy", str(output)], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=min(self.timeout * 3, _remaining(deadline)), check=False)
                 if completed.returncode or not output.is_file() or output.stat().st_size == 0:
                     raise BrowserCaptureError("ffmpeg could not mux downloaded HLS segments")
                 return output
@@ -160,14 +157,14 @@ def _cookie_headers(cdp: _Cdp, embed_url: str) -> dict[str, str]:
     return {"Referer": embed_url, "Accept": "*/*", "User-Agent": "Mozilla/5.0"}
 
 
-def _load_resource(cdp: _Cdp, url: str, frame_id: str, headers: dict[str, str], timeout: float) -> tuple[int | None, bytes]:
-    response = cdp.call("Network.loadNetworkResource", {"url": url, "frameId": frame_id, "options": {"includeCredentials": True, "headers": headers, "disableCache": False}}, timeout)
+def _load_resource(cdp: _Cdp, url: str, frame_id: str, headers: dict[str, str], timeout: float, *, deadline: float | None = None) -> tuple[int | None, bytes]:
+    response = cdp.call("Network.loadNetworkResource", {"url": url, "frameId": frame_id, "options": {"includeCredentials": True, "headers": headers, "disableCache": False}}, min(timeout, _remaining(deadline)) if deadline is not None else timeout)
     resource = response.get("resource", {})
     handle = resource.get("stream")
     status = resource.get("httpStatusCode")
     chunks = []
     while handle:
-        chunk = cdp.call("IO.read", {"handle": handle, "size": 65536}, timeout)
+        chunk = cdp.call("IO.read", {"handle": handle, "size": 65536}, min(timeout, _remaining(deadline)) if deadline is not None else timeout)
         data = chunk.get("data", "")
         if chunk.get("base64Encoded"):
             import base64
@@ -181,8 +178,8 @@ def _load_resource(cdp: _Cdp, url: str, frame_id: str, headers: dict[str, str], 
     return status if isinstance(status, int) else None, b"".join(chunks)
 
 
-def _playlist_segments(cdp: _Cdp, playlist: str, frame_id: str, headers: dict[str, str], timeout: float) -> list[str]:
-    status, body = _load_resource(cdp, playlist, frame_id, headers, timeout)
+def _playlist_segments(cdp: _Cdp, playlist: str, frame_id: str, headers: dict[str, str], timeout: float, *, deadline: float | None = None) -> list[str]:
+    status, body = _load_resource(cdp, playlist, frame_id, headers, timeout, deadline=deadline)
     if status != 200:
         return []
     lines = [line.strip() for line in body.decode("utf-8", "replace").splitlines() if line.strip()]
@@ -200,19 +197,29 @@ def _playlist_segments(cdp: _Cdp, playlist: str, frame_id: str, headers: dict[st
             elif pending and not line.startswith("#"):
                 variants.append((bandwidth, urljoin(playlist, line)))
                 pending = False
-        return _playlist_segments(cdp, max(variants)[1], frame_id, headers, timeout) if variants else []
+        return _playlist_segments(cdp, max(variants)[1], frame_id, headers, min(timeout, _remaining(deadline)) if deadline is not None else timeout, deadline=deadline) if variants else []
     return [urljoin(playlist, line) for line in lines if not line.startswith("#")]
 
 
-def _load_many(cdp: _Cdp, urls: list[str], frame_id: str, headers: dict[str, str], concurrency: int, timeout: float) -> dict[str, tuple[int | None, bytes]]:
-    result = {}
+def _remaining(deadline: float) -> float:
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise BrowserCaptureError("browser capture exceeded its overall time limit")
+    return remaining
+
+
+def _load_many(cdp: _Cdp, urls: list[str], frame_id: str, headers: dict[str, str], concurrency: int, timeout: float, output_dir: Path, *, deadline: float | None = None) -> list[Path]:
+    paths: list[Path] = []
     for start in range(0, len(urls), concurrency):
         batch = urls[start : start + concurrency]
-        commands = {cdp.send("Network.loadNetworkResource", {"url": url, "frameId": frame_id, "options": {"includeCredentials": True, "headers": headers, "disableCache": False}}): url for url in batch}
-        deadline = time.monotonic() + timeout
+        commands = {
+            cdp.send("Network.loadNetworkResource", {"url": url, "frameId": frame_id, "options": {"includeCredentials": True, "headers": headers, "disableCache": False}}): start + offset
+            for offset, url in enumerate(batch)
+        }
+        batch_deadline = min(deadline, time.monotonic() + timeout) if deadline is not None else time.monotonic() + timeout
         responses = {}
         pending = set(commands)
-        while pending and time.monotonic() < deadline:
+        while pending and time.monotonic() < batch_deadline:
             try:
                 message = json.loads(cdp.socket.recv(timeout=0.5))
             except TimeoutError:
@@ -220,31 +227,42 @@ def _load_many(cdp: _Cdp, urls: list[str], frame_id: str, headers: dict[str, str
             if message.get("id") in pending:
                 responses[message["id"]] = message.get("result", {})
                 pending.remove(message["id"])
-        for command_id, url in commands.items():
+        for command_id, index in commands.items():
             resource = responses.get(command_id, {}).get("resource", {})
             handle = resource.get("stream")
-            chunks = []
-            while handle:
-                try:
-                    chunk = cdp.call("IO.read", {"handle": handle, "size": 65536}, timeout)
-                except BrowserCaptureError:
-                    break
-                data = chunk.get("data", "")
-                if chunk.get("base64Encoded"):
-                    import base64
-                    chunks.append(base64.b64decode(data))
-                else:
-                    chunks.append(data.encode())
-                if chunk.get("eof"):
-                    break
+            segment_path = output_dir / f"segment-{index:06d}.ts"
+            written = 0
+            with segment_path.open("wb") as stream:
+                while handle:
+                    try:
+                        if deadline is not None:
+                            _remaining(deadline)
+                        read_timeout = min(timeout, max(0.1, batch_deadline - time.monotonic()))
+                        chunk = cdp.call("IO.read", {"handle": handle, "size": 65536}, read_timeout)
+                    except BrowserCaptureError:
+                        break
+                    data = chunk.get("data", "")
+                    if chunk.get("base64Encoded"):
+                        import base64
+                        body = base64.b64decode(data)
+                    else:
+                        body = data.encode()
+                    if body:
+                        stream.write(body)
+                        written += len(body)
+                    if chunk.get("eof"):
+                        break
             if handle:
                 try:
                     cdp.call("IO.close", {"handle": handle}, timeout=5)
                 except BrowserCaptureError:
                     pass
             status = resource.get("httpStatusCode")
-            result[url] = (status if isinstance(status, int) else None, b"".join(chunks))
-    return result
+            if status != 200 or written == 0:
+                segment_path.unlink(missing_ok=True)
+                raise BrowserCaptureError("an HLS segment could not be downloaded completely")
+            paths.append(segment_path)
+    return paths
 
 
 def _stop(process: subprocess.Popen) -> None:
