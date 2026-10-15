@@ -15,6 +15,7 @@ from dler_kun2.domain.models import CrawlResult
 from dler_kun2.domain.plans import DownloadPlan
 from dler_kun2.domain.types import EngineOptions
 from dler_kun2.infrastructure.storage.paths import OutputAllocator
+from dler_kun2.infrastructure.storage.transfer import write_metadata_sidecar
 
 from .browser import BrowserCaptureError, BrowserHlsDownloader
 from .embed_parser import extract_embed_url
@@ -105,6 +106,8 @@ class MixixxxEngine:
                     pass
                 raise
             os.replace(staging, output)
+            if options.get("metadata"):
+                write_metadata_sidecar(plan, output)
             return output
         except BrowserCaptureError as exc:
             output.unlink(missing_ok=True)

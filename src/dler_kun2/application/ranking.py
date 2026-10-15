@@ -24,5 +24,5 @@ async def ranking(engine_id: str, seeds: tuple[str, ...], days: int | None, outp
         return result
     if transfer is None:
         raise RouteError(EngineError(ErrorCode.DEPENDENCY_MISSING, "transfer service is pending"))
-    paths = tuple([await transfer.transfer(plan, output_dir, force=bool((options or {}).get("force"))) for plan in result.plans])
+    paths = tuple([await transfer.transfer(plan, output_dir, force=bool((options or {}).get("force")), metadata=bool((options or {}).get("metadata"))) for plan in result.plans])
     return CrawlResult(plans=result.plans, output_paths=result.output_paths + paths, requested=result.requested, discovered=result.discovered, completed=result.completed + len(paths), unavailable=result.unavailable, errors=result.errors)

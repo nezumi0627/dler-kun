@@ -1,4 +1,5 @@
 import asyncio
+import json
 from pathlib import Path
 
 import pytest
@@ -261,3 +262,37 @@ def test_transfer_force_refetches_cached_plan_without_overwriting_existing_file(
         assert runtime.calls == 2
 
     asyncio.run(scenario())
+
+
+def test_transfer_metadata_sidecar_excludes_signed_urls_and_secret_fields(tmp_path):
+    class Content:
+        async def iter_chunked(self, _size):
+            yield b"video"
+
+    class Response:
+        content = Content()
+
+        def release(self):
+            pass
+
+    class Runtime:
+        async def request(self, _method, _url):
+            return Response()
+
+    item = DownloadPlan(
+        "https://cdn.example/clip.mp4?X-Amz-Signature=private",
+        "https://site.example/share?password=private",
+        "https://site.example/share?token=private",
+        "video",
+        "clip.mp4",
+        None,
+        {"file_id": "file-1", "api_token": "private", "title": "clip"},
+    )
+    output = asyncio.run(TransferService(Runtime()).transfer(item, tmp_path, metadata=True))
+    sidecar = Path(f"{output}.json")
+    payload = json.loads(sidecar.read_text(encoding="utf-8"))
+    assert payload["metadata"] == {"file_id": "file-1", "title": "clip"}
+    assert payload["source_url"] == "https://site.example/share"
+    assert payload["source_page"] == "https://site.example/share"
+    assert "cdn.example" not in sidecar.read_text(encoding="utf-8")
+    assert "private" not in sidecar.read_text(encoding="utf-8")

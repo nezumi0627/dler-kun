@@ -15,7 +15,7 @@ from dler_kun2.routing.registry import EngineRegistry, RouteError
 
 
 class TransferService(Protocol):
-    async def transfer(self, plan: DownloadPlan, output_dir: Path, *, force: bool = False) -> Path: ...
+    async def transfer(self, plan: DownloadPlan, output_dir: Path, *, force: bool = False, metadata: bool = False) -> Path: ...
 
 
 @runtime_checkable
@@ -44,7 +44,7 @@ async def download(url: str, output_dir: Path, registry: EngineRegistry, transfe
         errors = list(result.errors)
         for plan in result.plans:
             try:
-                paths.append(await transfer.transfer(plan, output_dir, force=bool(request.options.get("force"))))
+                paths.append(await transfer.transfer(plan, output_dir, force=bool(request.options.get("force")), metadata=bool(request.options.get("metadata"))))
             except EngineError as exc:
                 errors.append(exc)
             except Exception as exc:
@@ -55,7 +55,7 @@ async def download(url: str, output_dir: Path, registry: EngineRegistry, transfe
                 errors.append(EngineError(code, "media transfer failed", retry_after))
         return DownloadResult(output_paths=tuple(paths), requested=result.requested, discovered=result.discovered, completed=len(paths), unavailable=result.unavailable, errors=tuple(errors))
     plan = await engine.resolve_download(request)
-    path = await transfer.transfer(plan, output_dir, force=bool(request.options.get("force")))
+    path = await transfer.transfer(plan, output_dir, force=bool(request.options.get("force")), metadata=bool(request.options.get("metadata")))
     return DownloadResult(output_paths=(path,), requested=1, discovered=1, completed=1)
 
 
