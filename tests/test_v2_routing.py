@@ -87,6 +87,27 @@ def test_every_legacy_host_is_verified_or_quarantined():
     }
 
 
+def test_subdomain_of_unverified_alias_is_quarantined():
+    with pytest.raises(RouteError) as exc:
+        EngineRegistry().resolve("https://cdn2.image-share.cc/k3KlOo")
+    assert exc.value.error.code is ErrorCode.AMBIGUOUS_SERVICE
+
+
+def test_path_predicate_failure_is_typed_and_redacted_in_cli(capsys, monkeypatch):
+    from dler_kun2.presentation.cli.main import main
+
+    def fail(_path):
+        raise RuntimeError("secret-path-token")
+
+    registry = EngineRegistry()
+    registry.register(FakeEngine("sample"), [RouteRule("sample", ("sample.test",), path_predicate=fail)])
+    monkeypatch.setattr("dler_kun2.presentation.cli.main.EngineRegistry", lambda: registry)
+    assert main(["detect", "https://sample.test/item", "--json"]) == 2
+    payload = capsys.readouterr().out
+    assert '"code": "ambiguous_service"' in payload
+    assert "secret-path-token" not in payload
+
+
 def test_unverified_unique_host_stays_quarantined_after_bare_registration():
     registry = EngineRegistry()
     registry.register(FakeEngine("linkex"), [RouteRule("linkex", ("l2e.click",))])

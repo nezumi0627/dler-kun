@@ -75,11 +75,16 @@ class EngineRegistry:
             raise RouteError(EngineError(ErrorCode.INVALID_REQUEST, "invalid URL"))
         host = host.lower().rstrip(".")
         candidates = [route for route in self._routes if host in route.hosts]
-        if host in UNVERIFIED_HOSTS and (not candidates or any(route.backend_probe is None for route in candidates)):
+        quarantined = any(host == alias or host.endswith(f".{alias}") for alias in UNVERIFIED_HOSTS)
+        if quarantined and (not candidates or any(route.backend_probe is None for route in candidates)):
             raise RouteError(EngineError(ErrorCode.AMBIGUOUS_SERVICE, "backend ownership is unverified"))
         matches = []
         for route in candidates:
-            if route.path_predicate is not None and not route.path_predicate(parsed.path or "/"):
+            try:
+                path_matches = route.path_predicate is None or route.path_predicate(parsed.path or "/")
+            except Exception as exc:
+                raise RouteError(EngineError(ErrorCode.AMBIGUOUS_SERVICE, "route path check failed")) from exc
+            if not path_matches:
                 continue
             try:
                 probe_matches = route.backend_probe is None or route.backend_probe(url)
