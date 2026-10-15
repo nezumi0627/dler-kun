@@ -39,6 +39,14 @@ def test_allocator_reserves_existing_collision(tmp_path):
     assert (tmp_path / "clip.mp4").read_bytes() == b"keep"
 
 
+def test_allocator_preserves_sanitized_relative_folder_and_contains_path(tmp_path):
+    item = DownloadPlan("https://cdn.example/a", "https://site.example/", "https://site.example/", "video", "clip.mp4", None, {"relative_dir": "../folder/CON"})
+    path = OutputAllocator().reserve(item, tmp_path)
+    assert path.resolve().is_relative_to(tmp_path.resolve())
+    assert tmp_path.resolve() in path.resolve().parents
+    assert path.parent.name == "_CON"
+
+
 def test_transfer_writes_part_then_atomically_completes(tmp_path):
     async def chunks():
         yield b"hello"

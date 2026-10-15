@@ -5,6 +5,8 @@ from __future__ import annotations
 from urllib.parse import urlsplit
 
 from dler_kun2.domain.contracts import Engine
+from dler_kun2.engines.gofile.adapter import GoFileEngine
+from dler_kun2.engines.gofile.client import GoFileClient
 from dler_kun2.engines.linkex.adapter import LinkexEngine
 from dler_kun2.engines.linkex.client import LinkexClient
 from dler_kun2.engines.mixixxx.adapter import MixixxxEngine
@@ -19,6 +21,7 @@ from .rules import RouteRule
 def build_registry(registry: EngineRegistry | None = None, *, videy: Engine | None = None, xo85: Engine | None = None, http: HttpRuntime | None = None) -> EngineRegistry:
     registry = registry or EngineRegistry()
     runtime = http or HttpRuntime()
+    registry.register(GoFileEngine(GoFileClient(runtime)), [RouteRule("gofile", ("gofile.io", "www.gofile.io"))])
     registry.register(videy or VideyEngine(runtime), [RouteRule("videy", ("videy.co", "www.videy.co"))])
     registry.register(xo85 or Xo85Engine(runtime), [RouteRule("85xo", ("85po.net", "www.85po.net"))])
     registry.register(

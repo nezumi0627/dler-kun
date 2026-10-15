@@ -28,19 +28,33 @@ class OutputAllocator:
         name = _safe_name(plan.suggested_name)
         if batch:
             name = f"{_safe_name(batch)}_{name}"
+        relative_dir = plan.metadata.get("relative_dir")
+        safe_parts = (
+            tuple(_safe_name(part) for part in str(relative_dir).replace("\\", "/").split("/") if part.strip(" ."))
+            if isinstance(relative_dir, str) and relative_dir
+            else ()
+        )
+        parent = root.joinpath(*safe_parts)
+        if not parent.resolve(strict=False).is_relative_to(root):
+            raise ValueError("output path escaped its root")
+        parent.mkdir(parents=True, exist_ok=True)
         path = Path(name)
         stem, suffix = path.stem, path.suffix
-        identity = hashlib.sha256(plan.source_url.encode("utf-8")).hexdigest()[:10]
-        candidate = root / f"{stem}-{identity}{suffix}"
+        identity = hashlib.sha256(plan.source_url.encode("utf-8")).hexdigest()
+        candidate = parent / f"{stem}-{identity}{suffix}"
         attempt = 0
         while True:
+            # Re-resolve immediately before creating: an existing symlink inside
+            # the output tree must never redirect the reservation elsewhere.
+            if not parent.resolve(strict=True).is_relative_to(root):
+                raise ValueError("output path escaped its root")
             try:
                 with candidate.open("xb"):
                     pass
-                if candidate.resolve().parent != root:
+                if not candidate.resolve().is_relative_to(root):
                     candidate.unlink(missing_ok=True)
                     raise ValueError("output path escaped its root")
                 return candidate
             except FileExistsError:
                 attempt += 1
-                candidate = root / f"{stem}-{identity}-{attempt}{suffix}"
+                candidate = parent / f"{stem}-{identity}-{attempt}{suffix}"
