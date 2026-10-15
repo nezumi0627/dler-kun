@@ -175,11 +175,11 @@ class HttpRuntime:
                         (request_task, cancel_task), return_when=asyncio.FIRST_COMPLETED
                     )
                     if cancel_task in done and cancel is not None and cancel.is_set():
-                        request_task.cancel()
                         raise asyncio.CancelledError
                     response = request_task.result()
             except asyncio.CancelledError:
                 request_task.cancel()
+                await asyncio.gather(request_task, return_exceptions=True)
                 semaphore.release()
                 raise
             except (aiohttp.ClientError, TimeoutError) as exc:
@@ -191,6 +191,7 @@ class HttpRuntime:
             finally:
                 if cancel_task is not None:
                     cancel_task.cancel()
+                    await asyncio.gather(cancel_task, return_exceptions=True)
             if response.status == 429:
                 try:
                     delay = self.limiter.defer(current, response.headers.get("Retry-After"))

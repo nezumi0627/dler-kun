@@ -43,6 +43,9 @@ def write_metadata_sidecar(plan, output: Path) -> Path:
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(temporary, sidecar)
+    except OSError as exc:
+        Path(temporary).unlink(missing_ok=True)
+        raise EngineError(ErrorCode.DOWNLOAD_FAILED, "metadata sidecar could not be written") from exc
     except BaseException:
         Path(temporary).unlink(missing_ok=True)
         raise
@@ -86,8 +89,11 @@ class TransferService:
             raise
 
     async def transfer(self, plan, output_dir: Path, *, force: bool = False, metadata: bool = False) -> Path:
-        root = Path(output_dir).resolve()
-        cache_key = self._cache_key(plan)
+        try:
+            root = Path(output_dir).resolve()
+            cache_key = self._cache_key(plan)
+        except (OSError, RuntimeError, ValueError) as exc:
+            raise EngineError(ErrorCode.INVALID_REQUEST, "output path or media plan is invalid") from exc
         if self.cache is not None and not force:
             entry = self.cache.get(cache_key)
             if entry and entry.get("status") == "complete":
@@ -106,7 +112,12 @@ class TransferService:
                     if metadata:
                         write_metadata_sidecar(plan, cached_path)
                     return cached_path
-        output = self.allocator.reserve(plan, output_dir)
+        try:
+            output = self.allocator.reserve(plan, output_dir)
+        except ValueError as exc:
+            raise EngineError(ErrorCode.INVALID_REQUEST, "output path could not be safely allocated") from exc
+        except (OSError, RuntimeError) as exc:
+            raise EngineError(ErrorCode.DOWNLOAD_FAILED, "output path could not be allocated") from exc
         response = None
         try:
             response = await self.runtime.request("GET", plan.media_url)

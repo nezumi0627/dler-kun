@@ -296,3 +296,31 @@ def test_transfer_metadata_sidecar_excludes_signed_urls_and_secret_fields(tmp_pa
     assert payload["source_page"] == "https://site.example/share"
     assert "cdn.example" not in sidecar.read_text(encoding="utf-8")
     assert "private" not in sidecar.read_text(encoding="utf-8")
+
+
+def test_transfer_normalizes_output_reservation_errors(tmp_path):
+    class BrokenAllocator:
+        def reserve(self, _plan, _root):
+            raise ValueError("private path detail")
+
+    class Runtime:
+        async def request(self, _method, _url):
+            raise AssertionError("network request should not start")
+
+    with pytest.raises(EngineError) as failure:
+        asyncio.run(TransferService(Runtime(), allocator=BrokenAllocator()).transfer(plan("clip.mp4"), tmp_path))
+    assert failure.value.code is ErrorCode.INVALID_REQUEST
+    assert "private path detail" not in failure.value.message
+
+
+def test_metadata_sidecar_normalizes_atomic_write_errors(tmp_path, monkeypatch):
+    import dler_kun2.infrastructure.storage.transfer as transfer_module
+
+    def fail_replace(_temporary, _target):
+        raise OSError("private filesystem detail")
+
+    monkeypatch.setattr(transfer_module.os, "replace", fail_replace)
+    with pytest.raises(EngineError) as failure:
+        transfer_module.write_metadata_sidecar(plan("clip.mp4"), tmp_path / "clip.mp4")
+    assert failure.value.code is ErrorCode.DOWNLOAD_FAILED
+    assert "private filesystem detail" not in failure.value.message

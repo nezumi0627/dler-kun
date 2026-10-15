@@ -340,3 +340,47 @@ def test_runtime_configures_socks_proxy_connector():
             await runtime.close()
 
     asyncio.run(scenario())
+
+
+def test_http_runtime_awaits_request_cleanup_after_cancel_event():
+    async def scenario():
+        from typing import cast
+
+        import aiohttp
+
+        started = asyncio.Event()
+        cleanup_started = asyncio.Event()
+        finish_cleanup = asyncio.Event()
+        cleaned = asyncio.Event()
+
+        class Session:
+            closed = False
+
+            async def request(self, *_args, **_kwargs):
+                started.set()
+                try:
+                    await asyncio.Event().wait()
+                except asyncio.CancelledError:
+                    cleanup_started.set()
+                    await finish_cleanup.wait()
+                    raise
+                finally:
+                    cleaned.set()
+
+        runtime = HttpRuntime()
+        async def session() -> aiohttp.ClientSession:
+            return cast(aiohttp.ClientSession, Session())
+
+        runtime._get_session = session
+        cancel = asyncio.Event()
+        task = asyncio.create_task(runtime.request("GET", "https://example.test/", cancel=cancel))
+        await started.wait()
+        cancel.set()
+        await cleanup_started.wait()
+        assert not task.done()
+        finish_cleanup.set()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert cleaned.is_set()
+
+    asyncio.run(scenario())
