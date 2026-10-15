@@ -22,12 +22,13 @@ class ErrorCode(str, Enum):
 
 
 @dataclass(frozen=True)
-class EngineError:
+class EngineError(Exception):
     code: ErrorCode
     message: str
     retry_after: float | None = None
 
     def __post_init__(self) -> None:
+        Exception.__init__(self, self.message)
         if self.retry_after is not None and (
             not isfinite(self.retry_after) or self.retry_after < 0
         ):

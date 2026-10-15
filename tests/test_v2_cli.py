@@ -72,9 +72,9 @@ def test_unsupported_capability_is_typed(tmp_path):
     assert exc.value.error.code is ErrorCode.UNSUPPORTED_CAPABILITY
 
 
-def test_cli_sites_json_reports_no_registered_engines(capsys):
+def test_cli_sites_json_reports_verified_engines(capsys):
     assert main(["sites", "--json"]) == 0
-    assert json.loads(capsys.readouterr().out) == {"sites": []}
+    assert json.loads(capsys.readouterr().out)["sites"][0]["engine_id"] == "videy"
 
 
 @pytest.mark.parametrize("command", ["detect", "download", "crawl", "ranking", "jobs", "cancel", "config"])

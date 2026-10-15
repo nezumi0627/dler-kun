@@ -1,0 +1,139 @@
+import asyncio
+from pathlib import Path
+
+from dler_kun2.domain.contracts import DownloadRequest
+from dler_kun2.domain.errors import ErrorCode
+from dler_kun2.engines.twimg.adapter import TwimgEngine
+
+
+def test_legacy_twimg_hosts_remain_quarantined() -> None:
+    from dler_kun2.routing.registry import EngineRegistry, RouteError
+
+    try:
+        EngineRegistry().resolve("https://twimg-media.com/item")
+    except RouteError as exc:
+        assert exc.error.code is ErrorCode.AMBIGUOUS_SERVICE
+    else:
+        raise AssertionError("unverified Twimg ownership must not resolve")
+
+
+def test_vendor_invocation_discovers_only_new_media_files(tmp_path: Path, monkeypatch) -> None:
+    script = tmp_path / "download_twitter_media.py"
+    script.write_text("# test tool", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    output = Path("out")
+    media = Path("nested") / "clip.mp4"
+
+    class Process:
+        returncode: int | None = 0
+
+        async def communicate(self) -> tuple[bytes | None, bytes | None]:
+            staged_media = staging / media
+            staged_media.parent.mkdir(parents=True)
+            staged_media.write_bytes(b"media")
+            (staging / "twimg.db").write_bytes(b"temporary history")
+            return b"done", b""
+
+        def terminate(self) -> None:
+            raise AssertionError("successful process should not be terminated")
+
+        async def wait(self) -> int:
+            return self.returncode or 0
+
+    async def runner(*command, **_kwargs):
+        nonlocal staging
+        staging = Path(command[command.index("-o") + 1])
+        return Process()
+
+    staging = Path()
+    engine = TwimgEngine(script_path=script, process_runner=runner)
+    paths = asyncio.run(
+        engine.run_vendor(DownloadRequest("https://example.invalid/x", {}), output)
+    )
+
+    assert paths == (tmp_path / output / media,)
+    assert not tuple((tmp_path / output).rglob("twimg.db"))
+
+
+def test_missing_vendor_reports_dependency_missing(tmp_path: Path) -> None:
+    engine = TwimgEngine(script_path=tmp_path / "absent.py")
+    try:
+        asyncio.run(
+            engine.run_vendor(DownloadRequest("https://example.invalid/x", {}), tmp_path / "out")
+        )
+    except Exception as exc:
+        assert getattr(exc, "code", None) is ErrorCode.DEPENDENCY_MISSING
+    else:
+        raise AssertionError("missing vendor must be reported")
+
+
+def test_resolution_plan_redacts_signed_source_query() -> None:
+    plan = asyncio.run(
+        TwimgEngine().resolve_download(
+            DownloadRequest("https://example.invalid/private/path?token=secret")
+        )
+    )
+    assert "secret" not in repr(plan)
+    assert "secret" not in str(plan.to_dict())
+    assert "private/path" not in str(plan.to_dict())
+
+
+def test_missing_python_runtime_is_normalized(tmp_path: Path) -> None:
+    script = tmp_path / "tool.py"
+    script.write_text("# tool", encoding="utf-8")
+
+    async def missing(*_args, **_kwargs):
+        raise FileNotFoundError("python")
+
+    engine = TwimgEngine(script_path=script, process_runner=missing)
+    try:
+        asyncio.run(
+            engine.run_vendor(DownloadRequest("https://example.invalid/x", {}), tmp_path / "out")
+        )
+    except Exception as exc:
+        assert getattr(exc, "code", None) is ErrorCode.DEPENDENCY_MISSING
+    else:
+        raise AssertionError("missing runtime must be reported")
+
+
+def test_cancellation_terminates_managed_vendor_process(tmp_path: Path) -> None:
+    script = tmp_path / "download_twitter_media.py"
+    script.write_text("# test tool", encoding="utf-8")
+    terminated = asyncio.Event()
+
+    class Process:
+        returncode: int | None = None
+
+        async def communicate(self) -> tuple[bytes | None, bytes | None]:
+            await asyncio.Event().wait()
+            return b"", b""
+
+        def terminate(self) -> None:
+            terminated.set()
+
+        async def wait(self) -> int:
+            self.returncode = -15
+            return self.returncode
+
+    async def runner(*_args, **_kwargs):
+        return Process()
+
+    async def scenario():
+        engine = TwimgEngine(script_path=script, process_runner=runner)
+        cancel = asyncio.Event()
+        task = asyncio.create_task(
+            engine.run_vendor(
+                DownloadRequest("https://example.invalid/x", {}),
+                tmp_path / "out",
+                cancel=cancel,
+            )
+        )
+        await asyncio.sleep(0)
+        cancel.set()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        assert terminated.is_set()
+
+    asyncio.run(scenario())

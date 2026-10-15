@@ -1,0 +1,1 @@
+"""Isolated downloader engine adapters."""

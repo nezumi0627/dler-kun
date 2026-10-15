@@ -8,6 +8,7 @@ from pathlib import Path
 from dler_kun2.domain.errors import EngineError
 from dler_kun2.presentation.cli.commands import run_command
 from dler_kun2.presentation.cli.output import emit
+from dler_kun2.routing.defaults import build_registry
 from dler_kun2.routing.registry import EngineRegistry, RouteError
 
 
@@ -32,7 +33,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     json_mode = args.global_json or args.json
     try:
-        value = run_command(args.command, getattr(args, "service", getattr(args, "target", None)), EngineRegistry(), output_dir=getattr(args, "output_dir", Path("downloads")), download_items=getattr(args, "download", False), seeds=tuple(getattr(args, "seed", ())), days=getattr(args, "days", None))
+        value = run_command(args.command, getattr(args, "service", getattr(args, "target", None)), build_registry(EngineRegistry()), output_dir=getattr(args, "output_dir", Path("downloads")), download_items=getattr(args, "download", False), seeds=tuple(getattr(args, "seed", ())), days=getattr(args, "days", None))
     except RouteError as exc:
         value = exc.error
     emit(value, json_mode=json_mode)
