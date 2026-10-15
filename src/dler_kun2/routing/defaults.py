@@ -36,7 +36,7 @@ def build_registry(registry: EngineRegistry | None = None, *, videy: Engine | No
         ))],
     )
     registry.register(GofileRunEngine(fun800), [RouteRule("gofilerun", ("gofile.run", "www.gofile.run"))])
-    registry.register(videy or VideyEngine(runtime), [RouteRule("videy", ("videy.co", "www.videy.co"))])
+    registry.register(videy or VideyEngine(runtime), [RouteRule("videy", ("videy.co", "www.videy.co", "video.twimg.it.com", "www.video.twimg.it.com"))])
     registry.register(xo85 or Xo85Engine(runtime), [RouteRule("85xo", ("85po.net", "www.85po.net"))])
     registry.register(
         LinkexEngine(LinkexClient(runtime)),

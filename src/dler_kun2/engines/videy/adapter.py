@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from typing import Protocol
-from urllib.parse import urlunsplit
+from urllib.parse import urlsplit, urlunsplit
 
 from dler_kun2.domain.contracts import (
     CrawlRequest,
@@ -39,12 +39,22 @@ class VideyEngine:
             response = await self._http.request("GET", request.url)
             html = await response.text()
             video_id, media_url, extension = parse_player(request.url, html, "")
-        except ValueError as exc:
-            raise EngineError(ErrorCode.NOT_FOUND, "Videy video ID was not found") from exc
+        except Exception as exc:
+            from dler_kun2.infrastructure.http.client import HttpError
+
+            if isinstance(exc, HttpError):
+                raise EngineError(exc.code, "Videy page request failed", exc.retry_after) from exc
+            if isinstance(exc, ValueError):
+                code = ErrorCode.INVALID_REQUEST if str(exc).startswith("invalid") else ErrorCode.NOT_FOUND
+                raise EngineError(code, "Videy URL could not be resolved") from exc
+            raise EngineError(ErrorCode.NETWORK_ERROR, "Videy page request failed") from exc
+        parsed_request = urlunsplit(("https", urlsplit(request.url).hostname or "videy.co", urlsplit(request.url).path, "", ""))
+        if urlsplit(request.url).hostname in {"videy.co", "www.videy.co"}:
+            parsed_request = urlunsplit(("https", "videy.co", "/v", f"id={video_id}", ""))
         return DownloadPlan(
             media_url=media_url,
-            source_url=urlunsplit(("https", "videy.co", "/v", f"id={video_id}", "")),
-            source_page=urlunsplit(("https", "videy.co", "/v", f"id={video_id}", "")),
+            source_url=parsed_request,
+            source_page=parsed_request,
             media_kind=extension,
             suggested_name=f"{video_id}.{extension}",
             size=None,

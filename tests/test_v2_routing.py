@@ -70,7 +70,7 @@ def test_malformed_url_is_invalid_request(url):
     "video.twimg-image.com", "video.twimg1.com", "cdn.twimg1.com",
     "twimg1.com", "twimg-album.com", "file-bio.com", "twfiles.com",
     "gofile.video", "gofile.trade",
-    "cdn1.twimg-media.com", "video.twimg.news", "video.twimg.it.com",
+    "cdn1.twimg-media.com", "video.twimg.news",
     "l2e.click",
 ])
 def test_unverified_legacy_alias_is_ambiguous(host):
@@ -82,7 +82,7 @@ def test_unverified_legacy_alias_is_ambiguous(host):
 def test_every_legacy_host_is_verified_or_quarantined():
     legacy_hosts = set().union(*(set(hosts) for hosts in ServiceDetector().supported_domains().values()))
     assert legacy_hosts == UNVERIFIED_HOSTS | {
-        "gofile.io", "gofile-douga.com", "gofile.run", "85po.net", "videy.co", "mixi-xxx.cc",
+        "gofile.io", "gofile-douga.com", "gofile.run", "85po.net", "videy.co", "video.twimg.it.com", "mixi-xxx.cc",
         "tweetfile.com", "gofile.website", "image-share.cc", "tweetplay.com",
         "imagedist.com", "gofile.rocks", "gofile.bar", "gofile.pl",
     }
