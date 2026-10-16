@@ -99,9 +99,11 @@ class OriginLimiter:
         if seconds is None:
             return None
         origin = self.origin(url)
-        if seconds > self.max_wait:
-            raise RetryDeferred(seconds)
+        now = time.monotonic()
         self._blocked_until[origin] = max(
-            self._blocked_until.get(origin, 0.0), time.monotonic() + seconds
+            self._blocked_until.get(origin, 0.0), now + seconds
         )
-        return seconds
+        remaining = max(0.0, self._blocked_until[origin] - now)
+        if remaining > self.max_wait:
+            raise RetryDeferred(remaining)
+        return remaining

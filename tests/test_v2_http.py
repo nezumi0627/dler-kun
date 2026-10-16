@@ -24,6 +24,9 @@ def test_origin_limiter_refuses_wait_above_cap():
     with pytest.raises(RetryDeferred) as exc:
         limiter.defer("https://example.test/x", "10")
     assert exc.value.retry_after == 10
+    with pytest.raises(RetryDeferred) as blocked:
+        asyncio.run(limiter.acquire("https://example.test/next"))
+    assert blocked.value.retry_after == pytest.approx(10, abs=0.1)
 
 
 def test_origin_limiter_releases_slot_when_retry_wait_is_cancelled():
