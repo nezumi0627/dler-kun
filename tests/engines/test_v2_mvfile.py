@@ -1,8 +1,11 @@
 import asyncio
 
+import pytest
+
 from dler_kun2.domain.contracts import CrawlRequest, DownloadRequest
 from dler_kun2.domain.errors import EngineError, ErrorCode
 from dler_kun2.engines.mvfile.adapter import MvfileEngine
+from dler_kun2.engines.mvfile.api import Fun800Client
 from dler_kun2.engines.mvfile.parser import Entry, parse_info, parse_list
 
 
@@ -88,3 +91,21 @@ def test_media_url_uses_second_valid_fallback():
         "shortLink": "GOOD", "originUrl": "https://cdn.example/null", "fileUrl": "https://cdn.example/video.mp4"
     }}]}})
     assert rows[0].media_url == "https://cdn.example/video.mp4"
+
+
+def test_share_code_rejects_unverified_hosts_before_api_calls():
+    from dler_kun2.engines.mvfile.adapter import share_code
+
+    with pytest.raises(EngineError) as error:
+        share_code("https://attacker.test/d/ABCD")
+    assert error.value.code is ErrorCode.UNSUPPORTED_SERVICE
+
+
+@pytest.mark.parametrize("base", ["ftp://api.example", "https://user:pass@api.example", "https://api.example:70000"])
+def test_fun800_client_rejects_unsafe_api_base(base):
+    class Http:
+        async def request(self, method, url, **kwargs):
+            raise AssertionError("invalid API base must fail at construction")
+
+    with pytest.raises(ValueError):
+        Fun800Client(Http(), api_base=base)

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from typing import Any, Protocol
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 from dler_kun2.domain.errors import EngineError, ErrorCode
 
@@ -23,6 +23,21 @@ class HttpClient(Protocol):
 class Fun800Client:
     def __init__(self, http: HttpClient, api_base: str = DEFAULT_API):
         self.http = http
+        try:
+            parsed = urlsplit(api_base)
+            parsed.port
+        except ValueError as exc:
+            raise ValueError("fun800 API base URL is invalid") from exc
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.hostname
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.query
+            or parsed.fragment
+            or any(char.isspace() for char in api_base)
+        ):
+            raise ValueError("fun800 API base must be an HTTP(S) URL without credentials or query")
         self.api_base = api_base.rstrip("/")
 
     async def _get(self, domain: str, endpoint: str, code: str, **params: int) -> Any:

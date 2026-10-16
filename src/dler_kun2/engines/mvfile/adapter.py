@@ -14,6 +14,12 @@ from dler_kun2.domain.plans import DownloadPlan
 
 from .parser import Entry
 
+FUN800_HOSTS = frozenset({
+    "tweetfile.com", "gofile.website", "image-share.cc", "cdn2.image-share.cc",
+    "tweetplay.com", "imagedist.com", "gofile.rocks", "gofile.bar", "gofile.pl",
+    "gofile.run",
+})
+
 
 class Fun800Api(Protocol):
     async def info(self, domain: str, code: str) -> Entry: ...
@@ -39,6 +45,8 @@ def share_code(url: str) -> tuple[str, str]:
     host = parsed.hostname.lower()
     if host.startswith("www."):
         host = host[4:]
+    if host not in FUN800_HOSTS:
+        raise EngineError(ErrorCode.UNSUPPORTED_SERVICE, "unverified fun800 host")
     return host, _code(PurePosixPath(parsed.path).name)
 
 

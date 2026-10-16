@@ -99,6 +99,7 @@ def main(argv: list[str] | None = None) -> int:
             command.add_argument("--browser-path")
             command.add_argument("--ffmpeg-path")
             command.add_argument("--timeout-seconds", "--timeout", dest="timeout_seconds", type=float)
+            command.add_argument("--api-base", help="mvfile/gofilerun API base URL override")
         if name in {"download", "crawl", "ranking"}:
             command.add_argument("--proxy")
             command.add_argument("--user-agent")
@@ -155,7 +156,20 @@ def main(argv: list[str] | None = None) -> int:
             config["timeout"] = timeout_override
         configured_output = config.get("output_dir", "downloads")
         output_dir = getattr(args, "output_dir", None) or Path(str(configured_output))
-        registry = build_registry(EngineRegistry(), http=_runtime_from_config(config))
+        mvfile_config = config.get("mvfile", {})
+        gofilerun_config = config.get("gofilerun", {})
+        mvfile_config = mvfile_config if isinstance(mvfile_config, dict) else {}
+        gofilerun_config = gofilerun_config if isinstance(gofilerun_config, dict) else {}
+        api_base_override = getattr(args, "api_base", None)
+        try:
+            registry = build_registry(
+                EngineRegistry(),
+                http=_runtime_from_config(config),
+                mvfile_api_base=api_base_override or str(mvfile_config.get("api_base") or "") or None,
+                gofilerun_api_base=api_base_override or str(gofilerun_config.get("api_base") or "") or None,
+            )
+        except ValueError as exc:
+            raise EngineError(ErrorCode.INVALID_REQUEST, "mvfile API base configuration is invalid") from exc
         value = run_command(args.command, target, registry, output_dir=output_dir, download_items=getattr(args, "download", False), seeds=seeds, days=getattr(args, "days", None), save_config=getattr(args, "save", False), cancel_all=getattr(args, "all", False), targets=targets, parallel_urls=parallel_urls, options=options)
     except RouteError as exc:
         value = exc.error

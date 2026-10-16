@@ -13,7 +13,7 @@ from dler_kun2.engines.linkex.adapter import LinkexEngine
 from dler_kun2.engines.linkex.client import LinkexClient
 from dler_kun2.engines.mixixxx.adapter import MixixxxEngine
 from dler_kun2.engines.mvfile.adapter import MvfileEngine
-from dler_kun2.engines.mvfile.api import Fun800Client
+from dler_kun2.engines.mvfile.api import DEFAULT_API, Fun800Client
 from dler_kun2.engines.videy.adapter import VideyEngine
 from dler_kun2.engines.xo85.adapter import Xo85Engine
 from dler_kun2.infrastructure.http.client import HttpRuntime
@@ -22,7 +22,7 @@ from .registry import EngineRegistry
 from .rules import RouteRule
 
 
-def build_registry(registry: EngineRegistry | None = None, *, videy: Engine | None = None, xo85: Engine | None = None, http: HttpRuntime | None = None) -> EngineRegistry:
+def build_registry(registry: EngineRegistry | None = None, *, videy: Engine | None = None, xo85: Engine | None = None, http: HttpRuntime | None = None, mvfile_api_base: str | None = None, gofilerun_api_base: str | None = None) -> EngineRegistry:
     registry = registry or EngineRegistry()
     runtime = http or HttpRuntime()
     registry.register(
@@ -33,9 +33,10 @@ def build_registry(registry: EngineRegistry | None = None, *, videy: Engine | No
             RouteRule("gofile", ("gofilelab.com", "www.gofilelab.com"), backend_probe=is_ranking_source_url),
         ],
     )
-    fun800 = Fun800Client(runtime)
+    mvfile_client = Fun800Client(runtime, mvfile_api_base or DEFAULT_API)
+    gofilerun_client = Fun800Client(runtime, gofilerun_api_base or mvfile_api_base or DEFAULT_API)
     registry.register(
-        MvfileEngine(fun800),
+        MvfileEngine(mvfile_client),
         [RouteRule("mvfile", (
             "tweetfile.com", "www.tweetfile.com", "gofile.website", "www.gofile.website",
             "image-share.cc", "www.image-share.cc", "cdn2.image-share.cc", "tweetplay.com", "www.tweetplay.com",
@@ -43,7 +44,7 @@ def build_registry(registry: EngineRegistry | None = None, *, videy: Engine | No
             "gofile.bar", "www.gofile.bar", "gofile.pl", "www.gofile.pl",
         ))],
     )
-    registry.register(GofileRunEngine(fun800), [RouteRule("gofilerun", ("gofile.run", "www.gofile.run"))])
+    registry.register(GofileRunEngine(gofilerun_client), [RouteRule("gofilerun", ("gofile.run", "www.gofile.run"))])
     registry.register(videy or VideyEngine(runtime), [RouteRule("videy", ("videy.co", "www.videy.co", "video.twimg.it.com", "www.video.twimg.it.com"))])
     registry.register(xo85 or Xo85Engine(runtime), [RouteRule("85xo", ("85po.net", "www.85po.net"))])
     registry.register(

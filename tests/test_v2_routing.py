@@ -155,3 +155,11 @@ def test_default_registry_routes_verified_fun800_backends_only():
     assert registry.resolve("https://gofilelab.com/ja/newest").engine_id == "gofile"
     with pytest.raises(RouteError):
         registry.resolve("https://gofilelab.com/unverified-path")
+
+
+def test_registry_build_uses_separate_configured_fun800_api_bases():
+    from dler_kun2.routing.defaults import build_registry
+
+    registry = build_registry(mvfile_api_base="https://mv-api.example/app", gofilerun_api_base="https://run-api.example/app")
+    assert getattr(getattr(registry.get("mvfile"), "client"), "api_base") == "https://mv-api.example/app"
+    assert getattr(getattr(registry.get("gofilerun"), "client"), "api_base") == "https://run-api.example/app"

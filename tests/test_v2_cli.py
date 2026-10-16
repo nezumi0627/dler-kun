@@ -320,6 +320,19 @@ def test_cli_applies_network_config_to_shared_http_runtime(tmp_path, monkeypatch
     capsys.readouterr()
 
 
+def test_cli_api_base_override_configures_both_fun800_engines(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+
+    def run(_command, _target, registry, **_kwargs):
+        assert getattr(getattr(registry.get("mvfile"), "client"), "api_base") == "https://api-override.example/app"
+        assert getattr(getattr(registry.get("gofilerun"), "client"), "api_base") == "https://api-override.example/app"
+        return {"accepted": True}
+
+    monkeypatch.setattr("dler_kun2.presentation.cli.main.run_command", run)
+    assert main(["download", "https://gofile.bar/d/ABCD", "--api-base", "https://api-override.example/app", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["accepted"] is True
+
+
 @pytest.mark.parametrize("command", ["detect", "download", "crawl", "ranking", "jobs", "cancel", "config"])
 def test_cli_json_is_valid_for_every_command(command, capsys):
     args = [command]
