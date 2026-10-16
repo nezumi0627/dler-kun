@@ -80,6 +80,17 @@ def test_explicit_pagination_flag_overrides_short_page_size():
     assert len(result.plans) == 2
 
 
+def test_crawl_rejects_invalid_page_limit_before_api_calls():
+    class Client:
+        async def content(self, *_args, **_kwargs):
+            raise AssertionError("invalid pagination must not make a request")
+
+    engine = GoFileEngine(Client())
+    with pytest.raises(EngineError) as error:
+        asyncio.run(engine._discover("https://gofile.io/d/ROOT", None, max_pages=0))
+    assert error.value.code is ErrorCode.INVALID_REQUEST
+
+
 def test_client_creates_and_reuses_one_persisted_guest_token(tmp_path):
     calls = []
 
@@ -146,6 +157,34 @@ def test_client_preserves_retry_after_and_does_not_retry(tmp_path):
     assert len(calls) == 1
     assert calls[0][2]["headers"]["X-Website-Token"] == "fresh-wt"
     assert calls[0][2]["headers"]["User-Agent"] == "fresh-browser-ua"
+
+
+def test_rate_limit_http_date_uses_injected_clock(tmp_path):
+    from email.utils import formatdate
+
+    now = 1_700_000_000
+
+    class Response:
+        headers = {"Retry-After": formatdate(now + 91, usegmt=True)}
+
+        async def json(self):
+            return {"status": "error-rateLimit"}
+
+    class Http:
+        async def request(self, *_args, **_kwargs):
+            return Response()
+
+    class TokenProvider:
+        async def generate(self, account_token: str):
+            assert account_token == "account-token"
+            return "wt", "ua", "ja"
+
+    client = GoFileClient(Http(), GuestTokenStore(tmp_path / "unused.json"), clock=lambda: now, website_token_provider=TokenProvider())
+    client._token = "account-token"
+    with pytest.raises(EngineError) as error:
+        asyncio.run(client.content("ROOT"))
+    assert error.value.code is ErrorCode.RATE_LIMITED
+    assert error.value.retry_after == 91
 
 
 def test_current_website_token_fails_closed_without_supported_browser(monkeypatch):

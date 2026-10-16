@@ -26,6 +26,8 @@ class GoFileEngine:
         self.client = client
 
     async def _discover(self, url: str, password: str | None, max_pages: int = 100) -> CrawlResult:
+        if not 1 <= max_pages <= 500:
+            raise EngineError(ErrorCode.INVALID_REQUEST, "GoFile max_pages must be 1..500")
         root_id = content_id(url)
         queue = deque([(root_id, "", password)])
         visited: set[str] = set()

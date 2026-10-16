@@ -125,11 +125,11 @@ class GoFileClient:
         if isinstance(payload, dict):
             errors = payload.get("errors", [])
             if payload.get("status") == "error-rateLimit" or (isinstance(errors, (list, tuple, set, str)) and "error-rateLimit" in errors):
-                raise EngineError(ErrorCode.RATE_LIMITED, "GoFile rate limit reached", _retry_after(response.headers, payload))
+                raise EngineError(ErrorCode.RATE_LIMITED, "GoFile rate limit reached", _retry_after(response.headers, payload, now=self._clock()))
         return payload
 
 
-def _retry_after(headers: Any, payload: dict[str, Any]) -> float | None:
+def _retry_after(headers: Any, payload: dict[str, Any], *, now: float) -> float | None:
     raw = headers.get("Retry-After") if headers is not None else None
     if raw is None:
         raw = payload.get("retryAfter") or payload.get("retry_after")
@@ -145,6 +145,6 @@ def _retry_after(headers: Any, payload: dict[str, Any]) -> float | None:
                 from datetime import timezone
 
                 date = date.replace(tzinfo=timezone.utc)
-            return max(0.0, date.timestamp() - time.time())
+            return max(0.0, date.timestamp() - now)
         except (TypeError, ValueError, OverflowError):
             return None
