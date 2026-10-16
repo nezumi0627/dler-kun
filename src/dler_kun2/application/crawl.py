@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from dler_kun2.application.download import TransferService
+from dler_kun2.application.download import TransferService, transfer_plans
 from dler_kun2.domain.contracts import CrawlRequest
 from dler_kun2.domain.errors import EngineError, ErrorCode
 from dler_kun2.domain.models import CrawlResult
@@ -22,20 +22,24 @@ async def crawl(engine_id: str, seeds: tuple[str, ...], days: int | None, output
     download_plan = getattr(engine, "download_plan", None)
     if transfer is None and not callable(download_plan):
         raise RouteError(EngineError(ErrorCode.DEPENDENCY_MISSING, "transfer service is pending"))
-    paths = list(result.output_paths)
     errors = list(result.errors)
-    for plan in result.plans:
-        try:
-            if callable(download_plan):
-                paths.append(await download_plan(plan, output_dir, options=options or {}))
-            else:
-                paths.append(await transfer.transfer(plan, output_dir, force=bool((options or {}).get("force") or (options or {}).get("overwrite")), metadata=bool((options or {}).get("metadata"))))
-        except EngineError as exc:
-            errors.append(exc)
-        except Exception as exc:
-            from dler_kun2.infrastructure.http.client import HttpError
+    settings = options or {}
+    try:
+        concurrency = int(settings.get("parallel_downloads", 4))
+    except (TypeError, ValueError) as exc:
+        raise RouteError(EngineError(ErrorCode.INVALID_REQUEST, "parallel download count must be an integer")) from exc
 
-            code = exc.code if isinstance(exc, HttpError) else ErrorCode.DOWNLOAD_FAILED
-            retry_after = exc.retry_after if isinstance(exc, HttpError) else None
-            errors.append(EngineError(code, "media transfer failed", retry_after))
+    async def engine_download(plan):
+        return await download_plan(plan, output_dir, options=settings)
+
+    paths, transfer_errors = await transfer_plans(
+        result.plans,
+        output_dir,
+        transfer,
+        settings,
+        concurrency=concurrency,
+        downloader=engine_download if callable(download_plan) else None,
+    )
+    errors.extend(transfer_errors)
+    paths = list(result.output_paths) + list(paths)
     return CrawlResult(plans=result.plans, output_paths=tuple(paths), requested=result.requested, discovered=result.discovered, completed=len(paths), unavailable=result.unavailable, errors=tuple(errors))

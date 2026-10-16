@@ -45,7 +45,7 @@ class Engine:
 
 
 class Transfer:
-    async def transfer(self, plan, output_dir, *, force=False, metadata=False):
+    async def transfer(self, plan, output_dir, *, force=False, metadata=False, options=None):
         return output_dir / plan.suggested_name
 
 
@@ -69,7 +69,7 @@ def test_download_many_keeps_successes_when_one_url_fails(tmp_path):
             return DownloadPlan(SECRET, request.url, request.url, "video", request.url.rsplit("/", 1)[-1] + ".mp4", None)
 
     class NamedTransfer:
-        async def transfer(self, plan, output_dir, *, force=False, metadata=False):
+        async def transfer(self, plan, output_dir, *, force=False, metadata=False, options=None):
             return output_dir / plan.suggested_name
 
     result = asyncio.run(
@@ -98,7 +98,7 @@ def test_download_many_deduplicates_repeated_input_urls(tmp_path):
     class CountingTransfer:
         calls = 0
 
-        async def transfer(self, plan, output_dir, *, force=False, metadata=False):
+        async def transfer(self, plan, output_dir, *, force=False, metadata=False, options=None):
             self.calls += 1
             return output_dir / "clip.mp4"
 
@@ -110,11 +110,46 @@ def test_download_many_deduplicates_repeated_input_urls(tmp_path):
     assert result.requested == result.completed == 1
 
 
+def test_download_many_caps_unbounded_concurrency(tmp_path):
+    with pytest.raises(EngineError) as error:
+        asyncio.run(download_many(("https://sample.test/a",), tmp_path, registry(), concurrency=65))
+    assert error.value.code is ErrorCode.INVALID_REQUEST
+
+
 def test_crawl_retains_plans_and_only_transfers_on_request(tmp_path):
     found = asyncio.run(crawl("sample", ("https://sample.test/1",), None, tmp_path, registry(), Transfer()))
     saved = asyncio.run(crawl("sample", ("https://sample.test/1",), None, tmp_path, registry(), Transfer(), download_items=True))
     assert found.completed == 0 and len(found.plans) == 1
     assert saved.completed == 1 and saved.plans == found.plans
+
+
+def test_crawl_downloads_plans_concurrently_with_a_bounded_worker_count(tmp_path):
+    class ManyEngine(Engine):
+        async def crawl(self, request):
+            plans = tuple(
+                DownloadPlan(SECRET, f"https://site.test/{index}", "https://site.test/", "video", f"{index}.mp4", None)
+                for index in range(6)
+            )
+            return CrawlResult(plans=plans, requested=1, discovered=len(plans))
+
+    class ParallelTransfer:
+        active = 0
+        peak = 0
+
+        async def transfer(self, plan, output_dir, *, force=False, metadata=False, options=None):
+            self.active += 1
+            self.peak = max(self.peak, self.active)
+            await asyncio.sleep(0.02)
+            self.active -= 1
+            return output_dir / plan.suggested_name
+
+    transfer = ParallelTransfer()
+    result = asyncio.run(crawl(
+        "sample", ("https://sample.test/1",), None, tmp_path, registry(ManyEngine()),
+        transfer, download_items=True, options={"parallel_downloads": 3},
+    ))
+    assert result.completed == 6
+    assert transfer.peak == 3
 
 
 def test_crawl_uses_engine_plan_downloader_for_browser_bound_media(tmp_path):
@@ -187,6 +222,26 @@ def test_cli_forwards_supported_crawl_options_and_sources(capsys, monkeypatch):
         "options": {"max_pages": 12, "limit": 30, "resolve_workers": 3},
     }
     assert json.loads(capsys.readouterr().out)["accepted"] is True
+
+
+def test_cli_restores_single_and_god_flags_with_bounded_concurrency(capsys, monkeypatch):
+    captured = {}
+
+    def run(_command, _target, _registry, **kwargs):
+        captured.update(options=kwargs["options"], parallel_urls=kwargs["parallel_urls"])
+        return {"accepted": True}
+
+    monkeypatch.setattr("dler_kun2.presentation.cli.main.run_command", run)
+    assert main([
+        "download", "https://sample.test/a", "https://sample.test/b",
+        "--single", "--god", "--json",
+    ]) == 0
+    assert captured["options"]["single"] is True
+    assert captured["options"]["god"] is True
+    assert captured["options"]["hls_workers"] == 8
+    assert captured["options"]["segment_concurrency"] == 8
+    assert captured["parallel_urls"] == 4
+    capsys.readouterr()
 
 
 def test_cli_uses_configured_output_directory_unless_overridden(tmp_path, monkeypatch, capsys):

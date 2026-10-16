@@ -23,8 +23,18 @@ class Fun800Api(Protocol):
 def share_code(url: str) -> tuple[str, str]:
     from .parser import _code
 
-    parsed = urlsplit(url)
-    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+    try:
+        parsed = urlsplit(url)
+        port = parsed.port
+    except ValueError as exc:
+        raise EngineError(ErrorCode.INVALID_REQUEST, "invalid fun800 URL") from exc
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or port not in {None, 80, 443}
+    ):
         raise EngineError(ErrorCode.INVALID_REQUEST, "invalid fun800 URL")
     host = parsed.hostname.lower()
     if host.startswith("www."):
@@ -57,9 +67,19 @@ class MvfileEngine:
             raise EngineError(ErrorCode.INVALID_REQUEST, "folder URL requires crawl")
         return self._plan(domain, item)
 
+    async def resolve_many(self, request: DownloadRequest) -> CrawlResult:
+        if request.options.get("single"):
+            plan = await self.resolve_download(request)
+            return CrawlResult(plans=(plan,), requested=1, discovered=1)
+        return await self.crawl(CrawlRequest(self.engine_id, (request.url,), None, request.options))
+
     async def crawl(self, request: CrawlRequest) -> CrawlResult:
         seeds = request.seeds
-        max_pages = int(request.options.get("max_pages") or 50)
+        try:
+            raw_max_pages = request.options.get("max_pages")
+            max_pages = 50 if raw_max_pages is None else int(raw_max_pages)
+        except (TypeError, ValueError) as exc:
+            raise EngineError(ErrorCode.INVALID_REQUEST, "mvfile max_pages must be an integer") from exc
         if not 1 <= max_pages <= 500:
             raise EngineError(ErrorCode.INVALID_REQUEST, "max_pages must be 1..500")
         plans: list[DownloadPlan] = []

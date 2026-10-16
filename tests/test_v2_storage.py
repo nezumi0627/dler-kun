@@ -105,6 +105,35 @@ def test_transfer_injects_into_application_download(tmp_path):
     assert result.output_paths[0].read_bytes() == b"movie"
 
 
+def test_hls_transfer_uses_hls_downloader_not_direct_playlist_body(tmp_path):
+    class Runtime:
+        async def request(self, *_args, **_kwargs):
+            raise AssertionError("HLS media must not be saved as a direct response")
+
+    class Hls:
+        async def download(self, url, referer, output, *, workers, cancel=None):
+            assert "/master.m3u8?sig=" in url
+            assert referer == "https://site.example/item"
+            assert workers == 3
+            output.write_bytes(b"real mp4")
+            return output
+
+    item = DownloadPlan(
+        "https://cdn.example/master.m3u8?sig=private",
+        "https://site.example/item",
+        "https://site.example/item",
+        "hls",
+        "clip.mp4",
+        100,
+    )
+    output = asyncio.run(
+        TransferService(Runtime(), hls_downloader=Hls()).transfer(
+            item, tmp_path, options={"segment_concurrency": 3}
+        )
+    )
+    assert output.read_bytes() == b"real mp4"
+
+
 def test_failed_http_status_leaves_no_reserved_output(tmp_path):
     async def scenario():
         from aiohttp import web

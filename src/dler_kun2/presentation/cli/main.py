@@ -73,10 +73,23 @@ def main(argv: list[str] | None = None) -> int:
             command.add_argument("--password")
         if name == "download":
             command.add_argument("--force", action="store_true")
+            command.add_argument("--single", action="store_true", help="mvfile: download only the requested item")
+            command.add_argument("--quality")
+            command.add_argument("--god", action="store_true", help="increase bounded transfer concurrency")
         if name in {"download", "crawl", "ranking"}:
             command.add_argument("--metadata", action="store_true")
         if name == "crawl":
             command.add_argument("--overwrite", action="store_true")
+            command.add_argument("--god", action="store_true", help="increase bounded crawl/download concurrency")
+            command.add_argument("--hls-workers", type=int)
+            command.add_argument("--download-attempts", type=int)
+            command.add_argument("--download-read-timeout", type=float)
+            command.add_argument("--download-max-time", type=float)
+            command.add_argument("--discover-workers", type=int)
+        if name in {"download", "crawl"}:
+            command.add_argument("--parallel-downloads", type=int)
+        if name == "download":
+            command.add_argument("--hls-workers", type=int)
         if name in {"crawl", "ranking"}:
             command.add_argument("--limit", type=int)
         if name == "crawl":
@@ -97,7 +110,8 @@ def main(argv: list[str] | None = None) -> int:
         if name in {"download", "crawl", "ranking"}:
             command.add_argument("-o", "--output-dir", type=Path)
         if name == "download":
-            command.add_argument("--parallel-urls", type=int, default=4, help="Maximum URLs downloaded concurrently")
+            command.add_argument("--parallel", "--parallel-urls", dest="parallel_urls", type=int, default=4, help="Maximum URLs downloaded concurrently")
+            command.add_argument("--seg-workers", dest="segment_concurrency", type=int)
         if name in {"crawl", "ranking"}:
             command.add_argument("--download", action="store_true")
     args = parser.parse_args(argv)
@@ -110,8 +124,16 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "download" and target:
         target = target[0]
     seeds = tuple(getattr(args, "seed", ())) + tuple(getattr(args, "source", ()))
-    option_names = ("max_pages", "limit", "password", "segment_concurrency", "browser_path", "ffmpeg_path", "timeout_seconds", "resolve_workers", "force", "overwrite", "metadata")
+    option_names = ("max_pages", "limit", "password", "segment_concurrency", "hls_workers", "browser_path", "ffmpeg_path", "timeout_seconds", "resolve_workers", "parallel_downloads", "download_attempts", "download_read_timeout", "download_max_time", "discover_workers", "quality", "single", "god", "force", "overwrite", "metadata")
     options = {name: value for name in option_names if (value := getattr(args, name, None)) not in (None, False)}
+    if options.get("god"):
+        options["resolve_workers"] = max(int(options.get("resolve_workers", 0)), 12)
+        options["parallel_downloads"] = max(int(options.get("parallel_downloads", 0)), 8)
+        options["hls_workers"] = max(int(options.get("hls_workers", 0)), 8)
+        options["segment_concurrency"] = max(int(options.get("segment_concurrency", 0)), 8)
+    parallel_urls = getattr(args, "parallel_urls", 4)
+    if args.command == "download" and options.get("god"):
+        parallel_urls = min(max(parallel_urls, min(len(targets or ()), 16)), 16)
     try:
         config = ConfigStore().as_dict(redact=False)
         for key in ("proxy", "user_agent", "cookie", "local_addr"):
@@ -124,7 +146,7 @@ def main(argv: list[str] | None = None) -> int:
         configured_output = config.get("output_dir", "downloads")
         output_dir = getattr(args, "output_dir", None) or Path(str(configured_output))
         registry = build_registry(EngineRegistry(), http=_runtime_from_config(config))
-        value = run_command(args.command, target, registry, output_dir=output_dir, download_items=getattr(args, "download", False), seeds=seeds, days=getattr(args, "days", None), save_config=getattr(args, "save", False), cancel_all=getattr(args, "all", False), targets=targets, parallel_urls=getattr(args, "parallel_urls", 4), options=options)
+        value = run_command(args.command, target, registry, output_dir=output_dir, download_items=getattr(args, "download", False), seeds=seeds, days=getattr(args, "days", None), save_config=getattr(args, "save", False), cancel_all=getattr(args, "all", False), targets=targets, parallel_urls=parallel_urls, options=options)
     except RouteError as exc:
         value = exc.error
     except EngineError as exc:

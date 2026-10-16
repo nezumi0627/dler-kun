@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Awaitable, Callable, Sequence
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
@@ -15,7 +16,7 @@ from dler_kun2.routing.registry import EngineRegistry, RouteError
 
 
 class TransferService(Protocol):
-    async def transfer(self, plan: DownloadPlan, output_dir: Path, *, force: bool = False, metadata: bool = False) -> Path: ...
+    async def transfer(self, plan: DownloadPlan, output_dir: Path, *, force: bool = False, metadata: bool = False, options: EngineOptions | None = None) -> Path: ...
 
 
 @runtime_checkable
@@ -26,6 +27,50 @@ class VendorDownloader(Protocol):
 @runtime_checkable
 class MultiPlanResolver(Protocol):
     async def resolve_many(self, request: DownloadRequest): ...
+
+
+async def transfer_plans(
+    plans: Sequence[DownloadPlan],
+    output_dir: Path,
+    transfer: TransferService | None,
+    options: EngineOptions,
+    *,
+    concurrency: int = 4,
+    downloader: Callable[[DownloadPlan], Awaitable[Path]] | None = None,
+) -> tuple[tuple[Path, ...], tuple[EngineError, ...]]:
+    if not 1 <= concurrency <= 64:
+        raise EngineError(ErrorCode.INVALID_REQUEST, "parallel download count must be 1..64")
+    if downloader is None and transfer is None:
+        raise EngineError(ErrorCode.DEPENDENCY_MISSING, "transfer service is pending")
+    semaphore = asyncio.Semaphore(concurrency)
+
+    async def one(plan: DownloadPlan) -> Path | EngineError:
+        async with semaphore:
+            try:
+                if downloader is not None:
+                    return await downloader(plan)
+                assert transfer is not None
+                return await transfer.transfer(
+                    plan,
+                    output_dir,
+                    force=bool(options.get("force") or options.get("overwrite")),
+                    metadata=bool(options.get("metadata")),
+                    options=options,
+                )
+            except EngineError as exc:
+                return exc
+            except Exception as exc:
+                from dler_kun2.infrastructure.http.client import HttpError
+
+                if isinstance(exc, HttpError):
+                    return EngineError(exc.code, "media transfer failed", exc.retry_after)
+                return EngineError(ErrorCode.DOWNLOAD_FAILED, "media transfer failed")
+
+    results = await asyncio.gather(*(one(plan) for plan in plans))
+    return (
+        tuple(value for value in results if isinstance(value, Path)),
+        tuple(value for value in results if isinstance(value, EngineError)),
+    )
 
 
 async def download(url: str, output_dir: Path, registry: EngineRegistry, transfer: TransferService | None = None, options: EngineOptions | None = None) -> DownloadResult:
@@ -40,22 +85,16 @@ async def download(url: str, output_dir: Path, registry: EngineRegistry, transfe
         raise RouteError(EngineError(ErrorCode.DEPENDENCY_MISSING, "transfer service is pending"))
     if isinstance(engine, MultiPlanResolver):
         result = await engine.resolve_many(request)
-        paths: list[Path] = []
         errors = list(result.errors)
-        for plan in result.plans:
-            try:
-                paths.append(await transfer.transfer(plan, output_dir, force=bool(request.options.get("force")), metadata=bool(request.options.get("metadata"))))
-            except EngineError as exc:
-                errors.append(exc)
-            except Exception as exc:
-                from dler_kun2.infrastructure.http.client import HttpError
-
-                code = exc.code if isinstance(exc, HttpError) else ErrorCode.DOWNLOAD_FAILED
-                retry_after = exc.retry_after if isinstance(exc, HttpError) else None
-                errors.append(EngineError(code, "media transfer failed", retry_after))
+        try:
+            concurrency = int(request.options.get("parallel_downloads", 4))
+        except (TypeError, ValueError) as exc:
+            raise EngineError(ErrorCode.INVALID_REQUEST, "parallel download count must be an integer") from exc
+        paths, transfer_errors = await transfer_plans(result.plans, output_dir, transfer, request.options, concurrency=concurrency)
+        errors.extend(transfer_errors)
         return DownloadResult(output_paths=tuple(paths), requested=result.requested, discovered=result.discovered, completed=len(paths), unavailable=result.unavailable, errors=tuple(errors))
     plan = await engine.resolve_download(request)
-    path = await transfer.transfer(plan, output_dir, force=bool(request.options.get("force")), metadata=bool(request.options.get("metadata")))
+    path = await transfer.transfer(plan, output_dir, force=bool(request.options.get("force")), metadata=bool(request.options.get("metadata")), options=request.options)
     return DownloadResult(output_paths=(path,), requested=1, discovered=1, completed=1)
 
 
@@ -70,8 +109,8 @@ async def download_many(
 ) -> DownloadResult:
     if not urls:
         raise EngineError(ErrorCode.INVALID_REQUEST, "at least one URL is required")
-    if concurrency < 1:
-        raise EngineError(ErrorCode.INVALID_REQUEST, "concurrency must be positive")
+    if not 1 <= concurrency <= 64:
+        raise EngineError(ErrorCode.INVALID_REQUEST, "concurrency must be 1..64")
 
     semaphore = asyncio.Semaphore(concurrency)
     unique_urls = tuple(dict.fromkeys(urls))

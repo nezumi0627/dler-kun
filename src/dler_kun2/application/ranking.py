@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from dler_kun2.application.download import TransferService
+from dler_kun2.application.download import TransferService, transfer_plans
 from dler_kun2.domain.contracts import CrawlRequest
 from dler_kun2.domain.errors import EngineError, ErrorCode
 from dler_kun2.domain.models import CrawlResult
@@ -24,5 +24,10 @@ async def ranking(engine_id: str, seeds: tuple[str, ...], days: int | None, outp
         return result
     if transfer is None:
         raise RouteError(EngineError(ErrorCode.DEPENDENCY_MISSING, "transfer service is pending"))
-    paths = tuple([await transfer.transfer(plan, output_dir, force=bool((options or {}).get("force")), metadata=bool((options or {}).get("metadata"))) for plan in result.plans])
-    return CrawlResult(plans=result.plans, output_paths=result.output_paths + paths, requested=result.requested, discovered=result.discovered, completed=result.completed + len(paths), unavailable=result.unavailable, errors=result.errors)
+    settings = options or {}
+    try:
+        concurrency = int(settings.get("parallel_downloads", 4))
+    except (TypeError, ValueError) as exc:
+        raise RouteError(EngineError(ErrorCode.INVALID_REQUEST, "parallel download count must be an integer")) from exc
+    paths, errors = await transfer_plans(result.plans, output_dir, transfer, settings, concurrency=concurrency)
+    return CrawlResult(plans=result.plans, output_paths=result.output_paths + paths, requested=result.requested, discovered=result.discovered, completed=result.completed + len(paths), unavailable=result.unavailable, errors=result.errors + errors)

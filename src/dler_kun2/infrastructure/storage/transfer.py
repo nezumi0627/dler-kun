@@ -53,7 +53,7 @@ def write_metadata_sidecar(plan, output: Path) -> Path:
 
 
 class TransferService:
-    def __init__(self, runtime, allocator=None, *, cache: JsonCache | None = None):
+    def __init__(self, runtime, allocator=None, *, cache: JsonCache | None = None, hls_downloader=None):
         self.runtime = runtime
         if allocator is None:
             from .paths import OutputAllocator
@@ -61,6 +61,7 @@ class TransferService:
             allocator = OutputAllocator()
         self.allocator = allocator
         self.cache = cache
+        self.hls_downloader = hls_downloader
 
     @staticmethod
     def _cache_key(plan) -> str:
@@ -88,7 +89,7 @@ class TransferService:
             part.unlink(missing_ok=True)
             raise
 
-    async def transfer(self, plan, output_dir: Path, *, force: bool = False, metadata: bool = False) -> Path:
+    async def transfer(self, plan, output_dir: Path, *, force: bool = False, metadata: bool = False, options=None) -> Path:
         try:
             root = Path(output_dir).resolve()
             cache_key = self._cache_key(plan)
@@ -120,15 +121,35 @@ class TransferService:
             raise EngineError(ErrorCode.DOWNLOAD_FAILED, "output path could not be allocated") from exc
         response = None
         try:
-            response = await self.runtime.request("GET", plan.media_url)
+            is_hls = plan.media_kind.lower() in {"hls", "m3u8"}
+            if is_hls:
+                from .hls import HlsDownloader
 
-            async def chunks():
-                async for chunk in response.content.iter_chunked(64 * 1024):
-                    yield chunk
+                settings = options or {}
+                downloader = self.hls_downloader or HlsDownloader(
+                    self.runtime,
+                    ffmpeg_path=str(settings.get("ffmpeg_path") or "") or None,
+                )
+                try:
+                    workers = int(settings.get("hls_workers", settings.get("segment_concurrency", 4)))
+                except (TypeError, ValueError) as exc:
+                    raise EngineError(ErrorCode.INVALID_REQUEST, "HLS worker count must be an integer") from exc
+                await downloader.download(
+                    plan.media_url,
+                    plan.source_page,
+                    output,
+                    workers=workers,
+                )
+            else:
+                response = await self.runtime.request("GET", plan.media_url)
 
-            await self.write_chunks(chunks(), output)
+                async def chunks():
+                    async for chunk in response.content.iter_chunked(64 * 1024):
+                        yield chunk
+
+                await self.write_chunks(chunks(), output)
             size = output.stat().st_size
-            if size <= 0 or (plan.size is not None and size != plan.size):
+            if size <= 0 or (not is_hls and plan.size is not None and size != plan.size):
                 raise EngineError(ErrorCode.DOWNLOAD_FAILED, "downloaded file size does not match the media plan")
             if metadata:
                 write_metadata_sidecar(plan, output)

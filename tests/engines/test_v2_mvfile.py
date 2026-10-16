@@ -57,6 +57,32 @@ def test_related_channel_keeps_root_item_and_stops_pagination():
     assert result.errors == ()
 
 
+def test_default_download_expands_related_channel_while_single_is_explicit():
+    calls = []
+
+    class Client:
+        async def info(self, domain, code):
+            calls.append(("info", code))
+            if code == "ROOT":
+                return Entry("ROOT", "root", False, "https://cdn.example/root.mp4", channel="CHNL")
+            return Entry("CHNL", "channel", True, None)
+
+        async def list(self, domain, code, page, page_size=50):
+            calls.append(("list", code, page))
+            return ((Entry("NEXT", "next", False, "https://cdn.example/next.mp4"),), 1)
+
+    engine = MvfileEngine(Client())
+    url = "https://gofile.bar/d/ROOT"
+    result = asyncio.run(engine.resolve_many(DownloadRequest(url)))
+    assert {plan.metadata["share_code"] for plan in result.plans} == {"ROOT", "NEXT"}
+    assert result.discovered == 2
+
+    calls.clear()
+    single = asyncio.run(engine.resolve_many(DownloadRequest(url, {"single": True})))
+    assert [plan.metadata["share_code"] for plan in single.plans] == ["ROOT"]
+    assert not any(call[0] == "list" for call in calls)
+
+
 def test_media_url_uses_second_valid_fallback():
     rows, _ = parse_list({"data": {"list": [{"netDiskInfo": {
         "shortLink": "GOOD", "originUrl": "https://cdn.example/null", "fileUrl": "https://cdn.example/video.mp4"
