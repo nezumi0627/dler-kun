@@ -22,7 +22,7 @@ _DEFAULTS: dict[str, Any] = {
     "local_addr": "",
     "engine_paths": {"twimg": ""},
     "85xo": {"days": 10, "max_pages": 50, "network_capture_seconds": 15.0},
-    "gofile": {"ranking_limit": 60, "max_more_clicks": 5},
+    "gofile": {"ranking_limit": 60, "max_more_clicks": 5, "ranking_seeds": []},
     "mvfile": {"api_base": "https://rwzugqnp.fun800.click/app-api", "timeout_seconds": 30.0},
 }
 _SECRET_PARTS = ("cookie", "token", "password", "secret", "apikey", "authorization")

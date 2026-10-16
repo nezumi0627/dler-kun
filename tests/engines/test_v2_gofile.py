@@ -309,3 +309,69 @@ def test_engine_ranking_keeps_partial_success_when_lab_requires_age_verification
     assert result.discovered == 1
     assert result.errors[0].code is ErrorCode.AUTH_REQUIRED
 
+
+def test_download_resolves_verified_douga_source_as_a_multi_plan_ranking():
+    class Response:
+        async def json(self):
+            return {"status": "ok", "items": [{"gofileUrl": "https://gofile.io/d/FILE"}]}
+
+    class Http:
+        async def request(self, method, url, **kwargs):
+            assert method == "GET"
+            assert "/api/new?limit=60" in url
+            return Response()
+
+    class Client:
+        http = Http()
+
+        async def content(self, content_id, *, password=None, page=1, page_size=1000):
+            return {"status": "ok", "data": {"type": "file", "id": content_id, "name": "clip.mp4", "link": "https://cdn.test/clip.mp4"}}
+
+    result = asyncio.run(GoFileEngine(Client()).resolve_many(DownloadRequest("https://gofile-douga.com/new")))
+    assert len(result.plans) == 1
+    assert result.plans[0].metadata["file_id"] == "FILE"
+    assert result.errors == ()
+
+
+def test_gofile_ranking_defaults_to_all_documented_public_sources():
+    calls = []
+
+    class Response:
+        async def json(self):
+            return {"status": "ok", "items": []}
+
+        async def text(self):
+            return "18歳以上 年齢確認"
+
+    class Http:
+        async def request(self, method, url, **kwargs):
+            calls.append(url)
+            return Response()
+
+    class Client:
+        http = Http()
+
+        async def content(self, *_args, **_kwargs):
+            raise AssertionError("empty ranking should not resolve shares")
+
+    from dler_kun2.domain.contracts import CrawlRequest
+
+    result = asyncio.run(GoFileEngine(Client()).ranking(CrawlRequest("gofile", (), None)))
+    assert result.requested == 8
+    assert len(calls) == 8
+    assert result.errors
+
+
+def test_gofile_ranking_rejects_invalid_limit_before_network_access():
+    class Client:
+        http = object()
+
+        async def content(self, *_args, **_kwargs):
+            raise AssertionError("invalid ranking limit must not request GoFile contents")
+
+    from dler_kun2.domain.contracts import CrawlRequest
+
+    with pytest.raises(EngineError) as error:
+        asyncio.run(GoFileEngine(Client()).ranking(CrawlRequest("gofile", ("new",), None, {"limit": "many"})))
+    assert error.value.code is ErrorCode.INVALID_REQUEST
+

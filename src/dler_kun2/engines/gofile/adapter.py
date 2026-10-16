@@ -78,6 +78,10 @@ class GoFileEngine:
         return CrawlResult(plans=tuple(plans), requested=1, discovered=discovered, unavailable=unavailable, errors=tuple(errors))
 
     async def resolve_many(self, request: DownloadRequest) -> CrawlResult:
+        from .ranking import is_ranking_source_url
+
+        if is_ranking_source_url(request.url):
+            return await self.ranking(CrawlRequest(self.engine_id, (request.url,), None, request.options))
         password = request.options.get("password")
         return await self._discover(request.url, str(password) if password else None)
 
@@ -91,30 +95,52 @@ class GoFileEngine:
 
     async def crawl(self, request: CrawlRequest) -> CrawlResult:
         if not request.seeds:
-            raise EngineError(ErrorCode.INVALID_REQUEST, "GoFile share URL is required")
+            return await self.ranking(request)
+        from .ranking import is_ranking_source_url, normalize_sources
+
+        normalized = normalize_sources(request.seeds)
+        if normalized and all(is_ranking_source_url(seed) for seed in normalized):
+            return await self.ranking(CrawlRequest(self.engine_id, normalized, request.days, request.options))
+        try:
+            max_pages = int(request.options.get("max_pages", 100))
+        except (TypeError, ValueError) as exc:
+            raise EngineError(ErrorCode.INVALID_REQUEST, "GoFile max_pages must be an integer") from exc
         results = []
         for seed in request.seeds:
             password = request.options.get("password")
             try:
-                results.append(await self._discover(seed, str(password) if password else None, int(request.options.get("max_pages", 100))))
+                results.append(await self._discover(seed, str(password) if password else None, max_pages))
             except EngineError as exc:
                 results.append(CrawlResult(requested=1, errors=(exc,)))
         return CrawlResult(plans=tuple(p for result in results for p in result.plans), requested=len(request.seeds), discovered=sum(r.discovered for r in results), unavailable=sum(r.unavailable for r in results), errors=tuple(e for r in results for e in r.errors))
 
     async def ranking(self, request: CrawlRequest) -> CrawlResult:
-        from .ranking import fetch_ids, normalize_sources
-
-        if not request.seeds:
-            raise EngineError(ErrorCode.INVALID_REQUEST, "provide one or more GoFile ranking source URLs")
+        from .ranking import DEFAULT_RANKING_SOURCES, fetch_ids, normalize_sources
         plans: list[DownloadPlan] = []
         errors: list[EngineError] = []
         requested = discovered = unavailable = 0
         seen: set[str] = set()
-        limit = int(request.options.get("limit", 60))
+        try:
+            limit = int(request.options.get("limit", 60))
+        except (TypeError, ValueError) as exc:
+            raise EngineError(ErrorCode.INVALID_REQUEST, "GoFile ranking limit must be an integer") from exc
+        if not 1 <= limit <= 500:
+            raise EngineError(ErrorCode.INVALID_REQUEST, "GoFile ranking limit must be 1..500")
         http = getattr(self.client, "http", None)
         if http is None:
             raise EngineError(ErrorCode.DEPENDENCY_MISSING, "GoFile ranking HTTP client is unavailable")
-        for seed in normalize_sources(request.seeds):
+        configured_seeds = request.options.get("config_seeds")
+        if request.seeds:
+            seeds = request.seeds
+        elif isinstance(configured_seeds, str) and configured_seeds.strip():
+            seeds = (configured_seeds,)
+        elif isinstance(configured_seeds, (list, tuple)) and configured_seeds:
+            seeds = tuple(str(seed) for seed in configured_seeds)
+        elif configured_seeds in (None, [], ()):
+            seeds = DEFAULT_RANKING_SOURCES
+        else:
+            raise EngineError(ErrorCode.INVALID_REQUEST, "GoFile ranking_seeds must be a URL or list")
+        for seed in normalize_sources(seeds):
             requested += 1
             try:
                 ids = await fetch_ids(http, seed, limit=limit)

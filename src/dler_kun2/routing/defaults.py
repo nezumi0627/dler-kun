@@ -7,6 +7,7 @@ from urllib.parse import urlsplit
 from dler_kun2.domain.contracts import Engine
 from dler_kun2.engines.gofile.adapter import GoFileEngine
 from dler_kun2.engines.gofile.client import GoFileClient
+from dler_kun2.engines.gofile.ranking import is_ranking_source_url
 from dler_kun2.engines.gofilerun.adapter import GofileRunEngine
 from dler_kun2.engines.linkex.adapter import LinkexEngine
 from dler_kun2.engines.linkex.client import LinkexClient
@@ -24,7 +25,14 @@ from .rules import RouteRule
 def build_registry(registry: EngineRegistry | None = None, *, videy: Engine | None = None, xo85: Engine | None = None, http: HttpRuntime | None = None) -> EngineRegistry:
     registry = registry or EngineRegistry()
     runtime = http or HttpRuntime()
-    registry.register(GoFileEngine(GoFileClient(runtime)), [RouteRule("gofile", ("gofile.io", "www.gofile.io"))])
+    registry.register(
+        GoFileEngine(GoFileClient(runtime)),
+        [
+            RouteRule("gofile", ("gofile.io", "www.gofile.io")),
+            RouteRule("gofile", ("gofile-douga.com", "www.gofile-douga.com"), backend_probe=is_ranking_source_url),
+            RouteRule("gofile", ("gofilelab.com", "www.gofilelab.com"), backend_probe=is_ranking_source_url),
+        ],
+    )
     fun800 = Fun800Client(runtime)
     registry.register(
         MvfileEngine(fun800),

@@ -23,6 +23,7 @@ DOUGA_SOURCES = (
     f"{DOUGA}/?sort=3days",
 )
 LAB_SOURCES = tuple(LAB_PAGES.values())
+DEFAULT_RANKING_SOURCES = DOUGA_SOURCES + LAB_SOURCES
 
 
 def normalize_sources(seeds: tuple[str, ...]) -> tuple[str, ...]:
@@ -52,7 +53,14 @@ def _source(seed: str) -> tuple[str, str]:
     value = seed.strip()
     if value in LAB_PAGES:
         return "lab", value
-    parsed = urlsplit(value if "://" in value else f"https://{value}")
+    explicit_scheme = "://" in value
+    try:
+        parsed = urlsplit(value if explicit_scheme else f"https://{value}")
+        port = parsed.port
+    except ValueError as exc:
+        raise EngineError(ErrorCode.INVALID_REQUEST, "invalid GoFile ranking source URL") from exc
+    if (explicit_scheme and parsed.scheme != "https") or parsed.username is not None or parsed.password is not None or port not in {None, 443}:
+        raise EngineError(ErrorCode.INVALID_REQUEST, "GoFile ranking sources require a verified HTTPS host")
     host = (parsed.hostname or "").lower().removeprefix("www.")
     if host == "gofile-douga.com":
         if parsed.path.rstrip("/") == "/new":
@@ -69,6 +77,14 @@ def _source(seed: str) -> tuple[str, str]:
             return "lab", key
         raise EngineError(ErrorCode.INVALID_REQUEST, "unsupported GoFile Lab ranking source")
     raise EngineError(ErrorCode.INVALID_REQUEST, "unsupported GoFile ranking source")
+
+
+def is_ranking_source_url(url: str) -> bool:
+    try:
+        _source(url)
+    except EngineError:
+        return False
+    return True
 
 
 def _ranking_url(source: str, limit: int) -> str:

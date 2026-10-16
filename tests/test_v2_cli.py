@@ -340,11 +340,30 @@ def test_cli_does_not_claim_pending_download_works(capsys):
     assert payload["error"]["code"] == "ambiguous_service"
 
 
-@pytest.mark.parametrize(("command", "service"), [("crawl", "unknown-engine"), ("ranking", "gofile")])
-def test_crawl_and_ranking_accept_service_without_seed(command, service, capsys):
+@pytest.mark.parametrize(("command", "service"), [("crawl", "unknown-engine")])
+def test_crawl_rejects_unknown_service_without_seed(command, service, capsys):
     assert main([command, service, "--json"]) == 2
-    expected = "invalid_request" if command == "ranking" else "unsupported_service"
-    assert json.loads(capsys.readouterr().out)["error"]["code"] == expected
+    assert json.loads(capsys.readouterr().out)["error"]["code"] == "unsupported_service"
+
+
+def test_gofile_ranking_uses_default_sources_and_configured_limit(capsys, monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "config.json").write_text(
+        json.dumps({"gofile": {"ranking_limit": 23, "ranking_seeds": ["new"]}}),
+        encoding="utf-8",
+    )
+    captured = {}
+
+    def run(command, target, _registry, **kwargs):
+        captured.update(command=command, target=target, seeds=kwargs["seeds"], options=kwargs["options"])
+        return {"accepted": True}
+
+    monkeypatch.setattr("dler_kun2.presentation.cli.main.run_command", run)
+    assert main(["ranking", "gofile", "--json"]) == 0
+    assert captured["seeds"] == ()
+    assert captured["options"]["limit"] == 23
+    assert captured["options"]["config_seeds"] == ["new"]
+    capsys.readouterr()
 
 
 def test_crawl_passes_optional_seed_and_days_to_application(tmp_path):

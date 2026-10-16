@@ -151,5 +151,7 @@ def test_default_registry_routes_verified_fun800_backends_only():
     assert registry.resolve("https://www.gofile.run/d/Abcd").engine_id == "gofilerun"
     assert registry.resolve("https://www.image-share.cc/d/Abcd").engine_id == "mvfile"
     assert registry.resolve("https://gofile.io/d/Abcd").engine_id == "gofile"
+    assert registry.resolve("https://gofile-douga.com/new").engine_id == "gofile"
+    assert registry.resolve("https://gofilelab.com/ja/newest").engine_id == "gofile"
     with pytest.raises(RouteError):
-        registry.resolve("https://gofilelab.com/ja/newest")
+        registry.resolve("https://gofilelab.com/unverified-path")

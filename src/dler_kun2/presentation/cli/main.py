@@ -136,6 +136,16 @@ def main(argv: list[str] | None = None) -> int:
         parallel_urls = min(max(parallel_urls, min(len(targets or ()), 16)), 16)
     try:
         config = ConfigStore().as_dict(redact=False)
+        if args.command in {"crawl", "ranking"} and target == "gofile":
+            gofile_config = config.get("gofile", {})
+            if isinstance(gofile_config, dict):
+                try:
+                    options.setdefault("limit", int(gofile_config.get("ranking_limit", 60)))
+                except (TypeError, ValueError) as exc:
+                    raise EngineError(ErrorCode.INVALID_REQUEST, "GoFile ranking limit is invalid") from exc
+                configured_seeds = gofile_config.get("ranking_seeds")
+                if not seeds and configured_seeds:
+                    options["config_seeds"] = configured_seeds
         for key in ("proxy", "user_agent", "cookie", "local_addr"):
             override = getattr(args, key, None)
             if override is not None:
