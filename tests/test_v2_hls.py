@@ -111,3 +111,38 @@ def test_hls_rejects_byte_range_instead_of_corrupting_output(tmp_path):
         assert not list(tmp_path.iterdir())
 
     asyncio.run(scenario())
+
+
+def test_hls_playlist_body_is_size_limited(tmp_path):
+    class StreamingContent:
+        async def iter_chunked(self, _size):
+            yield b"#EXTM3U\n"
+            yield b"x" * (8 * 1024 * 1024 + 1)
+
+    class StreamingResponse:
+        content = StreamingContent()
+
+        async def text(self):
+            raise AssertionError("bounded playlist reader must use streaming")
+
+        def release(self):
+            pass
+
+    class Runtime:
+        async def request(self, method: str, url: str, **kwargs: Any) -> HlsResponse:
+            del method, url, kwargs
+            return cast(HlsResponse, StreamingResponse())
+
+    runtime = Runtime()
+
+    async def scenario():
+        downloader = HlsDownloader(runtime, ffmpeg_path="ffmpeg")
+        try:
+            await downloader.download("https://media.test/list.m3u8", "https://share.test/item", tmp_path / "x.mp4")
+        except EngineError as exc:
+            assert exc.code is ErrorCode.NETWORK_ERROR
+        else:
+            raise AssertionError("oversized playlist must be rejected")
+        assert not list(tmp_path.iterdir())
+
+    asyncio.run(scenario())

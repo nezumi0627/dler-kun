@@ -184,7 +184,12 @@ class HlsDownloader:
     async def _get_text(self, url: str, referer: str, cancel: asyncio.Event | None) -> str:
         response = await self.runtime.request("GET", url, headers={"Referer": referer}, cancel=cancel)
         try:
-            return await response.text()
+            body = bytearray()
+            async for chunk in response.content.iter_chunked(64 * 1024):
+                if len(body) + len(chunk) > _MAX_PLAYLIST_BYTES:
+                    raise EngineError(ErrorCode.NETWORK_ERROR, "HLS playlist exceeds the size limit")
+                body.extend(chunk)
+            return bytes(body).decode("utf-8-sig", errors="replace")
         finally:
             response.release()
 

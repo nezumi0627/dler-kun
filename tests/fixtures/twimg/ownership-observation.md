@@ -11,6 +11,11 @@ Sanitized public GET observations only:
   `/flow/land-page/getInfo` and `/flow/land-page/list_by_links_page` endpoint
   names, plus `netDiskInfo` response-field references. This is evidence of a
   Fun800/vll-style frontend, not evidence of the legacy vendored Twimg backend.
+- A sanitized GET to `getInfo` using an intentionally invalid share identifier
+  and `domain=twimg-media.com` returned HTTP 200 with the envelope keys
+  `code,data,msg`; `data` contained `rules,shortLink,info`, and the invalid
+  identifier was represented by `rules.status=2` and `info=null`. A valid
+  share response and list payload were not obtained.
 - `https://cdn1.twimg-media.com/` timed out during response read.
 - `https://twimg.jp/` failed DNS resolution from the audit environment.
 
