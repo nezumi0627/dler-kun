@@ -185,7 +185,7 @@ def test_cli_help_subcommand_prints_root_help_without_loading_config(capsys, mon
     monkeypatch.chdir(tmp_path)
     (tmp_path / "config.json").write_text("invalid", encoding="utf-8")
     assert main(["help"]) == 0
-    assert "usage: dler-kun2" in capsys.readouterr().out
+    assert "usage: dler-kun" in capsys.readouterr().out
 
 
 def test_cli_download_accepts_multiple_urls(capsys, monkeypatch):

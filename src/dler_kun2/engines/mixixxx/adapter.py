@@ -13,7 +13,7 @@ from dler_kun2.domain.contracts import CrawlRequest, DownloadRequest, EngineCapa
 from dler_kun2.domain.errors import EngineError, ErrorCode
 from dler_kun2.domain.models import CrawlResult
 from dler_kun2.domain.plans import DownloadPlan
-from dler_kun2.domain.types import EngineOptions
+from dler_kun2.domain.types import EngineOptions, float_option, int_option
 from dler_kun2.infrastructure.storage.paths import OutputAllocator
 from dler_kun2.infrastructure.storage.transfer import write_metadata_sidecar
 
@@ -77,10 +77,10 @@ class MixixxxEngine:
 
     async def download_plan(self, plan: DownloadPlan, output_dir: Path, *, options: EngineOptions | None = None, segment_concurrency: int | None = None, browser_path: str | None = None, ffmpeg_path: str | None = None, timeout: float | None = None) -> Path:
         options = options or {}
-        segment_concurrency = segment_concurrency if segment_concurrency is not None else int(options.get("segment_concurrency", 4))
+        segment_concurrency = segment_concurrency if segment_concurrency is not None else int_option(options, "segment_concurrency", 4)
         browser_path = browser_path or str(options.get("browser_path") or "") or None
         ffmpeg_path = ffmpeg_path or str(options.get("ffmpeg_path") or "") or None
-        timeout = timeout if timeout is not None else float(options.get("timeout_seconds", 60.0))
+        timeout = timeout if timeout is not None else float_option(options, "timeout_seconds", 60.0)
         output = OutputAllocator().reserve(plan, output_dir)
         descriptor, staging_name = tempfile.mkstemp(prefix=".mixi-stage-", suffix=".mp4", dir=output.parent)
         os.close(descriptor)
@@ -131,9 +131,9 @@ class MixixxxEngine:
         return (path,)
 
     async def crawl(self, request: CrawlRequest) -> CrawlResult:
-        max_pages = int(request.options.get("max_pages", 5))
-        limit = int(request.options.get("limit", 0))
-        workers = int(request.options.get("resolve_workers", 4))
+        max_pages = int_option(request.options, "max_pages", 5)
+        limit = int_option(request.options, "limit", 0)
+        workers = int_option(request.options, "resolve_workers", 4)
         if not 1 <= max_pages <= 100 or limit < 0 or not 1 <= workers <= 12:
             raise EngineError(ErrorCode.INVALID_REQUEST, "mixi-xxx crawl limits are outside supported bounds")
         seeds = request.seeds or ("https://jav-mixi.cc/",)

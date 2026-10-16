@@ -1,134 +1,37 @@
 # アーキテクチャ
 
-`dler-kun` はダウンローダー固有の処理を **Engine Adapter** の背後に閉じ込め、共有のアプリケーション層を **Manager** に集約します。既存実装は `src/dler_kun/vendor/` の vendored コピーをそのまま利用し、内部ロジックは書き換えません。
-
-## 責務フロー
-
 ```text
-CLI (__main__.py)
-  -> DlerKunApp (app.py)
-  -> ServiceDetector / DownloaderFactory
-  -> IDownloader Engine Adapter
-  -> Vendored Downloader (vendor/)
-  -> Managers (config, queue, log, progress, history, cache, retry, proxy, cookies)
+CLI (presentation)
+  -> application services (download / crawl / ranking)
+  -> EngineRegistry (verified host and path rules)
+  -> engines/<engine_id> (site API, parser, adapter)
+  -> shared infrastructure (HTTP, rate limits, transfer, storage, state)
 ```
 
-### レイヤー説明
+## レイヤーの責務
 
-| レイヤー | 役割 |
-|----------|------|
-| **CLI** | 引数解析、人間向けサマリー / `--json` 出力。アプリケーションサービスのみ呼び出す |
-| **DlerKunApp** | ジョブ作成、リトライ、キャンセル、エンジン登録 |
-| **ServiceDetector** | URL からエンジン ID を判定 |
-| **DownloaderFactory** | 登録済みエンジンの lookup |
-| **Engine Adapter** | vendored 実装への橋渡し。例外を共通エラーコードに正規化 |
-| **Managers** | 設定、キュー、ログ、進捗、履歴、DL キャッシュ、プロキシ、Cookie |
+- **domain**: immutable request、download plan、結果、共通error code。
+- **application**: engine選択後の処理順、共通転送、部分結果の集計。
+- **routing**: 検証済みhost/path ruleとエンジン登録。未確認aliasをquarantine。
+- **engines**: site-specific APIとparser。共有HTTPや保存先の実装を重複させない。
+- **infrastructure/http**: 接続pool、timeout、origin単位の並列制限、Retry-After、cancel。
+- **infrastructure/storage**: 一意な出力名、root配下への保存、atomic transfer、HLS staging。
+- **infrastructure/state**: 設定、job状態、history、cache。
+- **presentation/cli**: 引数検証と短い標準出力。JSONは公開可能な結果だけを返す。
 
-## コアコンポーネント
+## Route追加手順
 
-- **`ServiceDetector`**: ドメインベースの明示的 URL 判定（`gofile.io` → `gofile` など）
-- **`DownloaderFactory`**: エンジンインスタンスの登録と取得
-- **`ConfigManager`**: `config.json` の読み込み・マージ・保存
-- **`QueueManager`**: ジョブ ID 発行、状態管理、キャンセルフラグ
-- **`LogManager`**: 正規化されたログイベント（`[INFO]` 等）
-- **`ProgressManager`**: ジョブ単位の進捗スナップショット
-- **`HistoryManager`**: 完了ジョブ履歴（`history.json`）
-- **`DownloadCacheManager`**: 完了 DL の skip 判定（`download_cache.json`）
-- **`RetryManager`**: 設定 `retry` 回数に基づく再試行
+1. 公開ページと参照APIの応答形を確認し、既存バックエンドとの違いを記録する。
+2. `routing/defaults.py` にrouteを追加する。パス判定が必要なhostでは `backend_probe` を設定する。
+3. `tests/test_v2_routing.py` に正しいrouteと誤routeしないケースを追加する。
+4. エンジン固有parserにはsanitized fixtureを使い、署名URLやcookieをfixtureに残さない。
 
-## エンジン分離
+ホスト名の類似だけではrouteを決めません。共有hostのbackendを識別できない場合は拒否します。
 
-```text
-src/dler_kun/engines/
-  twimg/adapter.py
-  gofile/
-    adapter.py
-    douga.py      # gofile-douga JSON API
-    lab.py        # gofilelab HTTP
-    seeds.py      # ランキングシード解決
-  85xo/
-    adapter.py
-    fast.py       # HTTP 高速クロール
-    seeds.py
-  mvfile/
-    adapter.py
-    api.py        # land-page API
-    hls.py        # HLS → mp4
-    dns.py        # DoH / CDN IP 解決
-```
+## 失敗と秘密値
 
-各 adapter は `sys.path` への vendored パス追加、または subprocess（twimg）で既存コードを呼び出します。**vendor 内部の改変は行いません。**
+engine adapterは例外を共通 `EngineError` に変換します。複数項目の取得では成功分を保持し、失敗を件数とerrorで返します。`DownloadPlan.media_url` は内部処理用で、既定repr・公開JSON・履歴へ含めません。
 
-## URL 判定
+## 移行状態
 
-> **名前だけで判定しない** — 類似ドメイン名でも中身が全く異なる場合がある。`gofile.rocks` / `gofile.website` / `gofile.run` は gofile.io のミラーではなく、mvfile 系（fun800/vll ネットディスク）の別サービス。`tweetfile.com` / `tweetplay.com` / `image-share.cc` / `imagedist.com` も同様に vll 系。新規ドメインを追加する際は、名前から推測せずに実際のバックエンド（SPA のフレームワーク、API ホスト、レスポンス構造）を確認してからルーティング先を決めること。
-
-| ドメイン | エンジン ID |
-|----------|-------------|
-| `gofile.io` | `gofile` |
-| `gofile-douga.com`, `gofilelab.com` | `gofile`（一覧ページ） |
-| `gofile.run` | `gofilerun` |
-| `85xo.com`, `85po.net`, `85po.com` | `85xo` |
-| `twimg-media.com`, `cdn1.twimg-media.com` | `twimg` |
-| `mvfile.com`, `file-photo.com`, `tweetfile.com`, `tweetplay.com`, `gofile.website`, `gofile.rocks`, `image-share.cc`, `imagedist.com` | `mvfile` |
-| `video.twimg.news`, `videy.co` | `videy` |
-| `mixi-xxx.cc` | `mixixxx` |
-
-未対応 URL は `unsupported`（エラーコード `unsupported_service`）を返します。
-
-## ジョブ種別
-
-| kind | 入口 | 説明 |
-|------|------|------|
-| `download` | `download` コマンド | URL 単位の DL |
-| `crawl` | `crawl 85xo` / `crawl mvfile` | 一覧クロール |
-| `ranking` | `ranking gofile` / `crawl gofile` | GoFile ランキング URL 収集 |
-
-GoFile の `crawl` は `app.crawl()` 内で `ranking()` に委譲されます（`days` は使用されません）。
-
-## エンジン契約（IDownloader）
-
-```python
-detect(url) -> bool
-download(request: DownloadRequest) -> DownloadResult
-crawl(request: CrawlRequest) -> CrawlResult
-ranking(request: CrawlRequest) -> CrawlResult   # GoFile のみ実装
-```
-
-未対応機能は `JobStatus.UNSUPPORTED` の `CrawlResult` / `DownloadResult` を返し、CLI へ raw 例外を漏らしません。
-
-**注**: ランキングも `CrawlRequest` / `CrawlResult` を使用します（専用 `RankingResult` 型はありません）。
-
-## リトライ
-
-`config.retry`（既定 2）に基づき、アプリ層で以下のエラーコードを含む失敗のみ再試行します。
-
-| 操作 | 再試行対象エラー |
-|------|------------------|
-| download | `download_failed`, `network_error` |
-| crawl / ranking | `crawl_failed`, `network_error` |
-
-## ランタイムデータファイル
-
-Git 管理外（プロジェクトルート相対）:
-
-| ファイル | 用途 |
-|----------|------|
-| `config.json` | ユーザー設定 |
-| `history.json` | ジョブ履歴 |
-| `download_cache.json` | DL 完了キャッシュ |
-| `downloads/` | 既定出力先 |
-| `logs/` | ログ（エンジン依存） |
-| GoFile `tokens.json` 等 | vendored gofile のトークン管理 |
-
-## 出力ディレクトリ規則
-
-- **GoFile download / ranking download**: `output_dir` が既に `gofile` または `rankings` ならそのまま、それ以外は `output_dir/gofile/` 配下へ保存
-- **85xo**: `output_dir` をそのまま使用（fast / legacy 共通）
-- **twimg**: 指定 `-o` をそのまま使用
-
-## 非交渉ルール
-
-1. 統合済みエンジンコード（`engines/gofile/gofile_dl/`、`engines/85xo/xo_dler/`）は dler-kun の一部として所有・変更できる
-2. vendored の twimg スクリプトは外部ツール扱い（変更は wrapper 側に留める）
-3. 秘密情報（Cookie、トークン、認証ヘッダ）をログに出さない
+`src/dler_kun` は旧実装との互換性調査中のコードです。新CLIは `dler_kun2` から起動します。旧パッケージを削除するのは全エンジンの機能・出力比較が済んでからです。

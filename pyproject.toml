@@ -1,7 +1,7 @@
 [project]
-name = "dler-kun"
+name = "dler-kun2"
 version = "0.1.0"
-description = "Unified downloader platform for existing downloader engines."
+description = "Verified multi-service media downloader with the dler-kun CLI."
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
@@ -17,13 +17,15 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "ruff>=0.9.0",
+    "basedpyright>=1.29.0",
+    "pytest>=8.0.0",
 ]
 browser = [
     "websockets>=14.0",
 ]
 
 [project.scripts]
-dler-kun = "dler_kun.__main__:main"
+dler-kun = "dler_kun2.presentation.cli.main:main"
 dler-kun2 = "dler_kun2.presentation.cli.main:main"
 
 [build-system]

@@ -1,33 +1,31 @@
-# インストール詳細
+# インストール
 
-## 開発用依存
+## 開発 checkout から使う
 
-```bash
-pip install -e ".[dev]"   # ruff（リント）
+```powershell
+git clone https://github.com/nezumi0627/dler-kun2.git
+cd dler-kun2
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -e .
+dler-kun --help
 ```
 
-## どこからでも使えるようにする（PATH 登録）
+macOS / Linux では仮想環境を `source .venv/bin/activate` で有効にします。`dler-kun2` の配布物が、既存の `dler-kun` コマンド名を新しい `dler_kun2` CLI に割り当てます。
 
-venv の `dler-kun.exe` を PATH に通せば、**cmd / PowerShell / bash のどこからでも** `dler-kun` と打てます。
+## 開発依存
 
-1. シムを置くディレクトリを作り、`dler-kun.cmd`（cmd 用）と `dler-kun`（bash 用）を配置。`<プロジェクトのパス>` はインストール先に置き換える:
+```powershell
+python -m pip install -e ".[dev]"
+```
 
-   `~/dler-kun-bin/dler-kun.cmd`:
-   ```cmd
-   @echo off
-   "<プロジェクトのパス>\.venv\Scripts\dler-kun.exe" %*
-   ```
-   `~/dler-kun-bin/dler-kun`（`chmod +x` する）:
-   ```sh
-   #!/bin/sh
-   exec "<プロジェクトのパス>/.venv/bin/dler-kun" "$@"
-   ```
+開発依存には Ruff、basedpyright、pytest が含まれます。ブラウザ機能を使う場合は `.[browser]` もインストールしてください。`mixixxx` の HLS 結合には別途 ffmpeg が必要です。
 
-   > venv 内のコマンドの場所は OS で異なる: Windows は `.venv\Scripts\dler-kun.exe`、macOS / Linux は `.venv/bin/dler-kun`。
+## インストール確認
 
-2. ディレクトリをユーザー PATH に追加:
-   ```powershell
-   [Environment]::SetEnvironmentVariable('Path', [Environment]::GetEnvironmentVariable('Path','User').TrimEnd(';') + ';' + "$HOME\dler-kun-bin", 'User')
-   ```
+```powershell
+dler-kun --help
+dler-kun sites --json
+```
 
-3. **新しいターミナル**を開けば使えます。
+`python -m dler_kun2` でも同じCLIを起動できます。

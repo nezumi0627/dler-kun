@@ -7,7 +7,7 @@ import os
 import re
 import shutil
 import tempfile
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
 from pathlib import Path, PurePosixPath
 from typing import Any, Protocol
 from urllib.parse import urljoin, urlsplit
@@ -22,7 +22,7 @@ _MAX_SEGMENTS = 5000
 
 
 class _Content(Protocol):
-    def iter_chunked(self, size: int): ...
+    def iter_chunked(self, size: int) -> AsyncIterator[bytes]: ...
 
 
 class _Response(Protocol):
@@ -194,9 +194,12 @@ class HlsDownloader:
             response.release()
 
     async def _mux(self, playlist: Path, output: Path) -> None:
+        ffmpeg_path = self.ffmpeg_path
+        if not ffmpeg_path:
+            raise EngineError(ErrorCode.DEPENDENCY_MISSING, "ffmpeg is required for HLS media")
         try:
             process = await self.process_runner(
-                self.ffmpeg_path,
+                ffmpeg_path,
                 "-y", "-nostdin", "-hide_banner", "-loglevel", "error",
                 "-protocol_whitelist", "file,crypto,data", "-i", str(playlist),
                 "-c", "copy", "-movflags", "+faststart", "-f", "mp4", str(output),

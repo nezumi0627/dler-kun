@@ -11,6 +11,7 @@ from dler_kun2.domain.contracts import CrawlRequest, DownloadRequest, EngineCapa
 from dler_kun2.domain.errors import EngineError, ErrorCode
 from dler_kun2.domain.models import CrawlResult
 from dler_kun2.domain.plans import DownloadPlan
+from dler_kun2.domain.types import int_option
 
 from .parser import SharePage
 
@@ -32,7 +33,7 @@ class LinkexEngine:
     async def _plans(self, url: str, max_pages: int = 100) -> CrawlResult:
         token = self.client.share_token(url)
         await self.client.validate_share(token)
-        queue = deque([None])
+        queue: deque[str | None] = deque([None])
         folders: set[str] = set()
         plans: list[DownloadPlan] = []
         errors: list[EngineError] = []
@@ -77,7 +78,7 @@ class LinkexEngine:
             raise EngineError(ErrorCode.NOT_FOUND, "Linkex share contains no downloadable files")
         if len(result.plans) > 1:
             raise EngineError(ErrorCode.INVALID_REQUEST, "share contains multiple files; use crawl")
-        return result.plans[0]
+        return next(iter(result.plans))
 
     async def resolve_many(self, request: DownloadRequest) -> CrawlResult:
         return await self._plans(request.url)
@@ -85,10 +86,12 @@ class LinkexEngine:
     async def crawl(self, request: CrawlRequest) -> CrawlResult:
         if not request.seeds:
             raise EngineError(ErrorCode.INVALID_REQUEST, "Linkex share URL is required")
-        results = []
+        results: list[CrawlResult] = []
         for seed in request.seeds:
             try:
-                results.append(await self._plans(seed, int(request.options.get("max_pages", 100))))
+                results.append(
+                    await self._plans(seed, int_option(request.options, "max_pages", 100))
+                )
             except EngineError as exc:
                 results.append(CrawlResult(requested=1, errors=(exc,)))
         return CrawlResult(

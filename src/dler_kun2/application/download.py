@@ -9,9 +9,9 @@ from typing import Protocol, runtime_checkable
 
 from dler_kun2.domain.contracts import DownloadRequest
 from dler_kun2.domain.errors import EngineError, ErrorCode
-from dler_kun2.domain.models import DownloadResult
+from dler_kun2.domain.models import CrawlResult, DownloadResult
 from dler_kun2.domain.plans import DownloadPlan
-from dler_kun2.domain.types import EngineOptions
+from dler_kun2.domain.types import EngineOptions, int_option
 from dler_kun2.routing.registry import EngineRegistry, RouteError
 
 
@@ -26,7 +26,14 @@ class VendorDownloader(Protocol):
 
 @runtime_checkable
 class MultiPlanResolver(Protocol):
-    async def resolve_many(self, request: DownloadRequest): ...
+    async def resolve_many(self, request: DownloadRequest) -> CrawlResult: ...
+
+
+@runtime_checkable
+class PlanDownloader(Protocol):
+    async def download_plan(
+        self, plan: DownloadPlan, output_dir: Path, *, options: EngineOptions | None = None
+    ) -> Path: ...
 
 
 async def transfer_plans(
@@ -87,7 +94,7 @@ async def download(url: str, output_dir: Path, registry: EngineRegistry, transfe
         result = await engine.resolve_many(request)
         errors = list(result.errors)
         try:
-            concurrency = int(request.options.get("parallel_downloads", 4))
+            concurrency = int_option(request.options, "parallel_downloads", 4)
         except (TypeError, ValueError) as exc:
             raise EngineError(ErrorCode.INVALID_REQUEST, "parallel download count must be an integer") from exc
         paths, transfer_errors = await transfer_plans(result.plans, output_dir, transfer, request.options, concurrency=concurrency)

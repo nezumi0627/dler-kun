@@ -1,32 +1,21 @@
 # Notice
 
-## Integrated engines
+## Engine code
 
-Downloader engine code migrated from the project author's own earlier tools is
-embedded in the engine packages, licensed under the same [LICENSE](LICENSE)
-(MIT):
+The project includes author-maintained engine implementations in both packages during migration:
 
-- `src/dler_kun/engines/85xo/xo_dler/` — 85xo crawler/downloader (from `vendor/85xo/xo_dler`)
-- `src/dler_kun/engines/gofile/gofile_dl/` — GoFile downloader (from `vendor/gofile/gofile_dl`)
+- `src/dler_kun2/engines/` — the successor implementation used by the `dler-kun` console command.
+- `src/dler_kun/engines/` — compatibility-era implementation retained until parity review is complete.
 
-## Vendored tools
+Both are distributed under the repository [MIT License](LICENSE), except where a file says otherwise.
 
-- `src/dler_kun/vendor/twimg/download_twitter_media.py` — twitter/tweetfile
-  media downloader (invoked as a subprocess; still vendored)
+## Vendored tool
 
-No third-party code is embedded; these are the author's own implementations.
+- `src/dler_kun2/vendor/twimg/download_twitter_media.py` — legacy media downloader invoked through the Twimg adapter. It is retained with provenance; its aliases currently have no default CLI route because verified hosts resolve to the Fun800/mvfile backend.
 
 ## External tools
 
-dler-kun invokes the following as separate executables (never bundled or
-linked):
+- **ffmpeg** — optional HLS muxing dependency for engines that need it. Install separately from [ffmpeg.org](https://ffmpeg.org).
+- **Chrome or Edge** — optional runtime used by browser-dependent media resolution. The relevant adapter reports a dependency error when the browser runtime is unavailable.
 
-- **ffmpeg** (LGPL/GPL) — used to mux HLS segments into MP4 (`mixixxx` engine).
-  Install from your OS package manager or https://ffmpeg.org.
-- **Google Chrome / Microsoft Edge** — used headlessly to fetch
-  TLS-fingerprint-bound HLS (`mixixxx` engine). Your own browser install.
-
-## Dependencies
-
-Runtime dependencies (`requests`, `cryptography`, `aiohttp`, `aiohttp-socks`,
-`rich`) retain their respective licenses (MIT / Apache-2.0).
+Runtime Python dependencies and their licenses are declared in `pyproject.toml`.

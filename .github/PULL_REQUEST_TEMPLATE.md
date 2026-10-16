@@ -9,10 +9,11 @@
 
 ## 検証
 
-- [ ] `python -m pytest`
-- [ ] `python -m ruff check src/dler_kun`
+- [ ] `python -m pytest -q`
+- [ ] `python -m ruff check src/dler_kun2 tests`
 - [ ] `python -m basedpyright`
-- [ ] 実機で動作確認（該当サイトの crawl / download）
+- [ ] `python -m dler_kun2 --help` と `sites --json`
+- [ ] 実機確認が必要な変更は、対象route/APIと結果を記録
 
 ## 関連
 

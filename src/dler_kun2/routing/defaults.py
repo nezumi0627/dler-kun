@@ -1,4 +1,4 @@
-"""Routes backed by current public page-contract evidence."""
+"""Compose the default engine registry from verified route groups."""
 
 from __future__ import annotations
 
@@ -21,37 +21,78 @@ from dler_kun2.infrastructure.http.client import HttpRuntime
 from .registry import EngineRegistry
 from .rules import RouteRule
 
+_MVFILE_HOSTS = (
+    "tweetfile.com", "www.tweetfile.com", "gofile.website", "www.gofile.website",
+    "image-share.cc", "www.image-share.cc", "cdn2.image-share.cc", "tweetplay.com",
+    "www.tweetplay.com", "imagedist.com", "www.imagedist.com", "gofile.rocks",
+    "www.gofile.rocks", "gofile.bar", "www.gofile.bar", "gofile.pl", "www.gofile.pl",
+    "twimg-media.com", "www.twimg-media.com", "cdn1.twimg-media.com",
+    "www.cdn1.twimg-media.com", "video.twimg-image.com", "www.video.twimg-image.com",
+    "media-twimg.com", "www.media-twimg.com", "cdn.twimg1.com", "www.cdn.twimg1.com",
+    "twimg1.com", "www.twimg1.com", "twimg-album.com", "www.twimg-album.com",
+    "twfiles.com", "www.twfiles.com",
+)
 
-def build_registry(registry: EngineRegistry | None = None, *, videy: Engine | None = None, xo85: Engine | None = None, http: HttpRuntime | None = None, mvfile_api_base: str | None = None, gofilerun_api_base: str | None = None) -> EngineRegistry:
-    registry = registry or EngineRegistry()
-    runtime = http or HttpRuntime()
+
+def _register_gofile(registry: EngineRegistry, runtime: HttpRuntime) -> None:
     registry.register(
         GoFileEngine(GoFileClient(runtime)),
-        [
+        (
             RouteRule("gofile", ("gofile.io", "www.gofile.io")),
-            RouteRule("gofile", ("gofile-douga.com", "www.gofile-douga.com"), backend_probe=is_ranking_source_url),
-            RouteRule("gofile", ("gofilelab.com", "www.gofilelab.com"), backend_probe=is_ranking_source_url),
+            RouteRule(
+                "gofile",
+                ("gofile-douga.com", "www.gofile-douga.com"),
+                backend_probe=is_ranking_source_url,
+            ),
+            RouteRule(
+                "gofile",
+                ("gofilelab.com", "www.gofilelab.com"),
+                backend_probe=is_ranking_source_url,
+            ),
+        ),
+    )
+
+
+def _register_mvfile(
+    registry: EngineRegistry, runtime: HttpRuntime, api_base: str | None
+) -> None:
+    client = Fun800Client(runtime, api_base or DEFAULT_API)
+    registry.register(MvfileEngine(client), [RouteRule("mvfile", _MVFILE_HOSTS)])
+
+
+def _register_gofilerun(
+    registry: EngineRegistry,
+    runtime: HttpRuntime,
+    api_base: str | None,
+    mvfile_api_base: str | None,
+) -> None:
+    client = Fun800Client(runtime, api_base or mvfile_api_base or DEFAULT_API)
+    registry.register(
+        GofileRunEngine(client),
+        [RouteRule("gofilerun", ("gofile.run", "www.gofile.run"))],
+    )
+
+
+def _register_videy(registry: EngineRegistry, runtime: HttpRuntime, engine: Engine | None) -> None:
+    registry.register(
+        engine or VideyEngine(runtime),
+        [
+            RouteRule(
+                "videy",
+                ("videy.co", "www.videy.co", "video.twimg.it.com", "www.video.twimg.it.com"),
+            )
         ],
     )
-    mvfile_client = Fun800Client(runtime, mvfile_api_base or DEFAULT_API)
-    gofilerun_client = Fun800Client(runtime, gofilerun_api_base or mvfile_api_base or DEFAULT_API)
+
+
+def _register_xo85(registry: EngineRegistry, runtime: HttpRuntime, engine: Engine | None) -> None:
     registry.register(
-        MvfileEngine(mvfile_client),
-        [RouteRule("mvfile", (
-            "tweetfile.com", "www.tweetfile.com", "gofile.website", "www.gofile.website",
-            "image-share.cc", "www.image-share.cc", "cdn2.image-share.cc", "tweetplay.com", "www.tweetplay.com",
-            "imagedist.com", "www.imagedist.com", "gofile.rocks", "www.gofile.rocks",
-            "gofile.bar", "www.gofile.bar", "gofile.pl", "www.gofile.pl",
-            "twimg-media.com", "www.twimg-media.com", "cdn1.twimg-media.com",
-            "www.cdn1.twimg-media.com", "video.twimg-image.com", "www.video.twimg-image.com",
-            "media-twimg.com", "www.media-twimg.com", "cdn.twimg1.com", "www.cdn.twimg1.com",
-            "twimg1.com", "www.twimg1.com", "twimg-album.com", "www.twimg-album.com",
-            "twfiles.com", "www.twfiles.com",
-        ))],
+        engine or Xo85Engine(runtime),
+        [RouteRule("85xo", ("85po.net", "www.85po.net"))],
     )
-    registry.register(GofileRunEngine(gofilerun_client), [RouteRule("gofilerun", ("gofile.run", "www.gofile.run"))])
-    registry.register(videy or VideyEngine(runtime), [RouteRule("videy", ("videy.co", "www.videy.co", "video.twimg.it.com", "www.video.twimg.it.com"))])
-    registry.register(xo85 or Xo85Engine(runtime), [RouteRule("85xo", ("85po.net", "www.85po.net"))])
+
+
+def _register_linkex(registry: EngineRegistry, runtime: HttpRuntime) -> None:
     registry.register(
         LinkexEngine(LinkexClient(runtime)),
         [
@@ -62,10 +103,40 @@ def build_registry(registry: EngineRegistry | None = None, *, videy: Engine | No
             )
         ],
     )
+
+
+def _register_mixixxx(registry: EngineRegistry, runtime: HttpRuntime) -> None:
     registry.register(
         MixixxxEngine(runtime),
-        [RouteRule("mixixxx", ("mixi-xxx.cc", "www.mixi-xxx.cc", "jav-mixi.cc", "www.jav-mixi.cc"))],
+        [
+            RouteRule(
+                "mixixxx",
+                ("mixi-xxx.cc", "www.mixi-xxx.cc", "jav-mixi.cc", "www.jav-mixi.cc"),
+            )
+        ],
     )
+
+
+def build_registry(
+    registry: EngineRegistry | None = None,
+    *,
+    videy: Engine | None = None,
+    xo85: Engine | None = None,
+    http: HttpRuntime | None = None,
+    mvfile_api_base: str | None = None,
+    gofilerun_api_base: str | None = None,
+) -> EngineRegistry:
+    """Build routes only for backends supported by current response evidence."""
+    registry = registry or EngineRegistry()
+    runtime = http or HttpRuntime()
+    _register_gofile(registry, runtime)
+    _register_mvfile(registry, runtime, mvfile_api_base)
+    _register_gofilerun(registry, runtime, gofilerun_api_base, mvfile_api_base)
+    _register_videy(registry, runtime, videy)
+    _register_xo85(registry, runtime, xo85)
+    _register_linkex(registry, runtime)
+    _register_mixixxx(registry, runtime)
     registry.http_runtime = runtime
-    # Unverified Twimg-like aliases remain quarantined in the registry.
+    # Twimg's former aliases are verified Fun800 pages and belong to mvfile.
+    # Keep the legacy adapter isolated until a distinct public route is proven.
     return registry

@@ -12,6 +12,7 @@ from dler_kun2.domain.contracts import CrawlRequest, DownloadRequest, EngineCapa
 from dler_kun2.domain.errors import EngineError, ErrorCode
 from dler_kun2.domain.models import CrawlResult
 from dler_kun2.domain.plans import DownloadPlan
+from dler_kun2.domain.types import int_option
 
 from .dates import within_days
 from .listing_parser import ListingItem, parse_listing
@@ -72,10 +73,10 @@ class Xo85Engine:
         return await self._resolve(item)
 
     async def crawl(self, request: CrawlRequest) -> CrawlResult:
-        max_pages = int(request.options.get("max_pages", 50))
-        days = request.days if request.days is not None else int(request.options.get("days", 10))
-        limit = int(request.options.get("limit", 0))
-        workers = int(request.options.get("resolve_workers", 4))
+        max_pages = int_option(request.options, "max_pages", 50)
+        days = request.days if request.days is not None else int_option(request.options, "days", 10)
+        limit = int_option(request.options, "limit", 0)
+        workers = int_option(request.options, "resolve_workers", 4)
         if not 1 <= max_pages <= 500 or not 0 <= days <= 3650 or not 1 <= workers <= 16 or limit < 0:
             raise EngineError(ErrorCode.INVALID_REQUEST, "85xo crawl limits are outside supported bounds")
         now = datetime.now(timezone.utc)

@@ -9,7 +9,7 @@ import sys
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Protocol
+from typing import Protocol, cast
 from urllib.parse import urlsplit
 
 from dler_kun2.domain.contracts import (
@@ -26,20 +26,21 @@ from .parser import suggested_filename
 
 
 class ManagedProcess(Protocol):
-    returncode: int | None
+    @property
+    def returncode(self) -> int | None: ...
 
-    async def communicate(self) -> tuple[bytes | None, bytes | None]: ...
+    async def communicate(self) -> tuple[bytes, bytes]: ...
 
     def terminate(self) -> None: ...
 
     async def wait(self) -> int: ...
 
 
-ProcessRunner = Callable[..., Awaitable[ManagedProcess]]
+ProcessRunner = Callable[..., Awaitable[object]]
 _MEDIA_SUFFIXES = {".mp4", ".mov", ".m4v", ".webm", ".mkv", ".jpg", ".png"}
 
 
-async def _spawn(*args: str, **kwargs: object) -> asyncio.subprocess.Process:
+async def _spawn(*args: str, **kwargs: object) -> object:
     return await asyncio.create_subprocess_exec(*args, **kwargs)  # type: ignore[arg-type]
 
 
@@ -98,11 +99,14 @@ class TwimgEngine:
             if isinstance(local_addr, str) and local_addr:
                 command.extend(("--local-addr", local_addr))
             try:
-                process = await self._process_runner(
-                    *command,
-                    cwd=temporary,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
+                process = cast(
+                    ManagedProcess,
+                    await self._process_runner(
+                        *command,
+                        cwd=temporary,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                    ),
                 )
             except FileNotFoundError as exc:
                 raise EngineError(ErrorCode.DEPENDENCY_MISSING, "Python runtime is missing") from exc

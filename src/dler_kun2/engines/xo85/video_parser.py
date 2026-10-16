@@ -33,7 +33,11 @@ def parse_media_page(html: str, page_url: str):
     candidates = {url for url in candidates if "screenshots/" not in url.lower() and ".jpg" not in url.lower()}
     if not candidates:
         return None, None
-    media = max(candidates, key=lambda url: ("download=true" in url.lower(), int((_BR.search(url) or [None, "0"])[1])))
+    def quality(url: str) -> tuple[bool, int]:
+        match = _BR.search(url)
+        return "download=true" in url.lower(), int(match.group(1)) if match else 0
+
+    media = max(candidates, key=quality)
     uploaded = None
     for match in re.finditer(r'<meta\b[^>]*itemprop=["\']uploadDate["\'][^>]*content=["\']([^"\']+)', html, re.I):
         uploaded = _iso(match.group(1))

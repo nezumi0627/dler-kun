@@ -1,79 +1,88 @@
-# dler-kun
+# dler-kun2
 
-<p align="center">
-  <img src=".github/assets/banner.png" alt="dler-kun" width="100%">
-</p>
+`dler-kun2` は `dler-kun` の後継実装です。インストール後に使うコマンド名は従来どおり **`dler-kun`** で、新しい Python 実装を起動します。旧 GitHub リポジトリ `nezumi0627/dler-kun` はアーカイブ済みです。
 
-複数サイトのメディアを、ひとつの CLI でダウンロードするツール。URL を渡せば対応サイトを自動判定し、単発ダウンロードからランキング収集・期間指定クロールまで同じコマンド体系で扱えます。
+複数のメディアサービスを、共通の URL 判定・クロール・保存・エラー形式で扱う Python 3.10+ の CLI です。確認できたサービスだけをルート登録し、未確認の別名は誤配信を避けるため拒否します。
 
-<p align="left">
-  <img alt="Python" src="https://img.shields.io/badge/Python-3.10%2B-blue?style=flat-square">
-  <img alt="License" src="https://img.shields.io/badge/License-MIT-blue?style=flat-square">
-  <img alt="Platform" src="https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=flat-square">
-</p>
+## セットアップ
 
-> **免責事項** — 実験・教育目的のツールです。権利のないコンテンツの取得には使わないでください。DRM の回避や認証の突破は行いません。利用者は各国の法律・対象サイトの規約を遵守する責任があります。[LEGAL.md](LEGAL.md)
-
----
-
-## クイックスタート
-
-```bash
-git clone https://github.com/nezumi0627/dler-kun.git
-cd dler-kun
+```powershell
+git clone https://github.com/nezumi0627/dler-kun2.git
+cd dler-kun2
 python -m venv .venv
-.\.venv\Scripts\Activate.ps1      # Windows (PowerShell)
-source .venv/bin/activate         # macOS / Linux
-pip install -e .
+.\.venv\Scripts\Activate.ps1   # Windows PowerShell
+# source .venv/bin/activate     # macOS / Linux
+python -m pip install -e .
+dler-kun --help
 ```
 
-```bash
-dler-kun download https://gofile.io/d/example -o downloads
-dler-kun crawl 85xo --days 15 --download
+開発ツールを含める場合:
+
+```powershell
+python -m pip install -e ".[dev]"
+```
+
+## 対応エンジン
+
+CLI の `dler-kun sites --json` が現在の登録内容です。ホスト名だけでなく、必要なサービスではパスやバックエンド識別子も判定します。
+
+| Engine | 登録対象 | download | crawl | ranking |
+|---|---|:---:|:---:|:---:|
+| `gofile` | `gofile.io`、ランキングページの `gofile-douga.com` / `gofilelab.com` | ✓ | ✓ | ✓ |
+| `gofilerun` | `gofile.run` | ✓ | ✓ | — |
+| `85xo` | `85po.net` | ✓ | ✓ | — |
+| `linkex` | `l2e.click/i/...` | ✓ | ✓ | — |
+| `mixixxx` | `mixi-xxx.cc`、`jav-mixi.cc` | ✓ | ✓ | — |
+| `mvfile` | Fun800/VLL API を確認した共有ホスト。詳細は [engines.md](docs/engines.md) | ✓ | ✓ | — |
+| `videy` | `videy.co`、`video.twimg.it.com` | ✓ | — | — |
+
+`twimg` の旧vendor adapterは保管していますが、現在そのCLIルートは登録していません。確認済みのTwimg風共有ホストはFun800系バックエンドを使うため、`mvfile` に登録しています。未確認のホストは名前だけで振り分けません。
+
+## 使い方
+
+```powershell
+# URL の判定
+dler-kun detect https://gofile.io/d/EXAMPLE
+
+# 共有URLのダウンロード
+dler-kun download https://gofile.io/d/EXAMPLE -o downloads
+
+# クロール結果の確認。--download を付けると保存も実行
+dler-kun crawl 85xo --days 15
+dler-kun crawl 85xo --days 15 --download -o downloads/85xo
+
+# GoFile ランキング
 dler-kun ranking gofile --source douga --download
+
+# 機械処理向け JSON
+dler-kun --json sites
 ```
 
-> PATH へ登録してどこからでも使いたい場合は [docs/install.md](docs/install.md) を参照。
-
----
-
-## 対応サイト
-
-| Site | 対象ドメイン | download | crawl | ranking |
-|------|--------------|:--------:|:-----:|:-------:|
-| **gofile** | gofile.io | ✓ | | |
-| **gofile-douga** | gofile-douga.com | ✓ | ✓ | ✓ |
-| **gofilelab** | gofilelab.com | ✓ | ✓ | ✓ |
-| **gofilerun** | gofile.run | ✓ | ✓ | |
-| **85xo** | 85xo.com · 85po.net · 85po.com | ✓ | ✓ | |
-| **twimg** | twimg-media | ✓ | | |
-| **mvfile** | mvfile.com · tweetfile.com · tweetplay.com · gofile.website · gofile.rocks · image-share.cc · imagedist.com | ✓ | ✓ | |
-| **videy** | video.twimg.news · videy.co | ✓ | | |
-| **mixixxx** | mixi-xxx.cc | ✓ | ✓ | |
-
-対応していないサイトの追加要望は **Issue** からどうぞ（下記「サイト追加リクエスト」）。
-
----
+全コマンドは `dler-kun --help`、各コマンドの引数は `dler-kun <command> --help` で確認できます。
 
 ## ドキュメント
 
-| ドキュメント | 内容 |
-|--------------|------|
-| [cli.md](docs/cli.md) | コマンド・オプション・終了コード |
-| [install.md](docs/install.md) | インストール詳細・PATH 登録 |
-| [config.md](docs/config.md) | 設定ファイル・キャッシュ |
-| [sources.md](docs/sources.md) | クロール/ランキングのソース別名 |
-| [engines.md](docs/engines.md) | サイトごとの能力 |
-| [architecture.md](docs/architecture.md) | 内部構成 |
+- [インストール](docs/install.md)
+- [CLI リファレンス](docs/cli.md)
+- [エンジンとURLルーティング](docs/engines.md)
+- [設定](docs/config.md)
+- [アーキテクチャ](docs/architecture.md)
+- [運用・レート制限・トラブルシューティング](docs/operations.md)
 
----
+## 開発時の確認
 
-## サイト追加リクエスト
+```powershell
+python -m ruff check src/dler_kun2 tests
+python -m basedpyright
+python -m pytest -q
+python -m dler_kun2 --help
+python -m dler_kun2 sites --json
+```
 
-対応してほしいサイトがある場合は、[サイト追加リクエスト](https://github.com/nezumi0627/dler-kun/issues/new?assignees=&labels=enhancement&projects=&template=site_request.md&title=) から Issue を投稿してください。URL のサンプルと利用目的を添えると対応しやすくなります。
+## 安全な利用
 
----
+権利のあるコンテンツと、各サイトの利用条件に従って使用してください。認証・DRM・アクセス制限を回避しません。HTTP 429 と `Retry-After` を尊重し、IP・アカウント・token の切替で制限を回避しません。Cookie、署名付きURL、認証情報はログや公開結果に含めないでください。
 
 ## ライセンス
 
-[MIT](LICENSE) — 自由にコピー・変更・再配布できます。再配布時は著作権表示（作者名）の保持が条件です。vendored エンジン・外部ツール（ffmpeg / Chrome）の扱いは [NOTICE](NOTICE) を参照。
+本体は [MIT License](LICENSE) です。統合コード、vendor、外部ツールの情報は [NOTICE](NOTICE) を参照してください。

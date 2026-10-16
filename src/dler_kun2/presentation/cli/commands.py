@@ -120,10 +120,21 @@ def run_command(command: str, target: str | None, registry: EngineRegistry, *, o
     if command == "download":
         if parallel_urls < 1:
             raise RouteError(EngineError(ErrorCode.INVALID_REQUEST, "parallel URL count must be positive"))
-        urls = targets or ((target,) if target is not None else ())
+        if targets is not None:
+            urls = targets
+        elif target is not None:
+            urls = (target,)
+        else:
+            raise RouteError(EngineError(ErrorCode.INVALID_REQUEST, "URL is required"))
         if not urls:
             raise RouteError(EngineError(ErrorCode.INVALID_REQUEST, "URL is required"))
-        operation = download_many(urls, output_dir, registry, transfer, options, concurrency=parallel_urls) if len(urls) > 1 else download(urls[0], output_dir, registry, transfer, options)
+        if len(urls) > 1:
+            operation = download_many(urls, output_dir, registry, transfer, options, concurrency=parallel_urls)
+        else:
+            first_url = next(iter(urls), None)
+            if first_url is None:
+                raise RouteError(EngineError(ErrorCode.INVALID_REQUEST, "URL is required"))
+            operation = download(first_url, output_dir, registry, transfer, options)
         return execute(operation, "download")
     if command in {"crawl", "ranking"}:
         if target is None:

@@ -35,6 +35,9 @@ class BrowserWebsiteTokenProvider:
             raise EngineError(ErrorCode.NETWORK_ERROR, "GoFile website token generation failed") from exc
 
     def _generate(self, account_token: str) -> tuple[str, str, str]:
+        browser_path = self.browser_path
+        if not browser_path:
+            raise EngineError(ErrorCode.DEPENDENCY_MISSING, "Chrome or Edge is required for current GoFile signing")
         try:
             from websockets.sync.client import connect
         except ImportError as exc:
@@ -45,7 +48,7 @@ class BrowserWebsiteTokenProvider:
             port = listener.getsockname()[1]
         with tempfile.TemporaryDirectory(prefix="dler-kun2-gofile-wt-") as temporary:
             process = subprocess.Popen(
-                [self.browser_path, "--headless=new", "--disable-gpu", "--no-first-run", "--disable-extensions", "--remote-allow-origins=*", f"--remote-debugging-port={port}", f"--user-data-dir={Path(temporary) / 'profile'}", "https://gofile.io/"],
+                [browser_path, "--headless=new", "--disable-gpu", "--no-first-run", "--disable-extensions", "--remote-allow-origins=*", f"--remote-debugging-port={port}", f"--user-data-dir={Path(temporary) / 'profile'}", "https://gofile.io/"],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )

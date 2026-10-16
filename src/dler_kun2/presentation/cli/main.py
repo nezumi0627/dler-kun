@@ -8,6 +8,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from dler_kun2.domain.errors import EngineError, ErrorCode
+from dler_kun2.domain.types import int_option
 from dler_kun2.infrastructure.http.client import HttpRuntime
 from dler_kun2.infrastructure.state.config import ConfigStore
 from dler_kun2.presentation.cli.commands import run_command
@@ -18,8 +19,17 @@ from dler_kun2.routing.registry import EngineRegistry, RouteError
 
 def _runtime_from_config(config: dict[str, object]) -> HttpRuntime:
     try:
-        timeout = float(config.get("timeout", 30))
-        concurrency = int(config.get("threads", 3))
+        timeout_value = config.get("timeout", 30)
+        thread_value = config.get("threads", 3)
+        if (
+            isinstance(timeout_value, bool)
+            or not isinstance(timeout_value, (int, float, str))
+            or isinstance(thread_value, bool)
+            or not isinstance(thread_value, (int, float, str))
+        ):
+            raise ValueError("timeout or threads must be numeric")
+        timeout = float(timeout_value)
+        concurrency = int(thread_value)
     except (TypeError, ValueError) as exc:
         raise EngineError(ErrorCode.INVALID_REQUEST, "network timeout or thread count is invalid") from exc
     if not isfinite(timeout) or timeout <= 0 or not 1 <= concurrency <= 64:
@@ -50,7 +60,7 @@ def _runtime_from_config(config: dict[str, object]) -> HttpRuntime:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="dler-kun2")
+    parser = argparse.ArgumentParser(prog="dler-kun")
     parser.add_argument("--json", action="store_true", dest="global_json")
     commands = parser.add_subparsers(dest="command", required=True)
     for name in ("detect", "sites", "help", "download", "crawl", "ranking", "jobs", "cancel", "config"):
@@ -123,19 +133,22 @@ def main(argv: list[str] | None = None) -> int:
         parser.print_help()
         return 0
     json_mode = args.global_json or args.json
-    target = getattr(args, "service", getattr(args, "target", None))
-    targets = tuple(target) if args.command == "download" else None
-    if args.command == "download" and target:
-        target = target[0]
-    seeds = tuple(getattr(args, "seed", ())) + tuple(getattr(args, "source", ()))
+    target = getattr(args, "service", None)
+    targets = None
+    if args.command == "download":
+        targets = tuple(getattr(args, "target", ()) or ())
+        target = next(iter(targets), None)
+    elif target is None:
+        target = getattr(args, "target", None)
+    seeds = tuple(getattr(args, "seed", None) or ()) + tuple(getattr(args, "source", None) or ())
     option_names = ("max_pages", "limit", "password", "segment_concurrency", "seg_workers", "parallel", "verbose", "hls_workers", "browser_path", "ffmpeg_path", "timeout_seconds", "resolve_workers", "parallel_downloads", "download_attempts", "download_read_timeout", "download_max_time", "discover_workers", "quality", "single", "include_undated", "god", "force", "overwrite", "metadata")
     options = {name: value for name in option_names if (value := getattr(args, name, None)) not in (None, False)}
     crawl_days = getattr(args, "days", None)
     if options.get("god"):
-        options["resolve_workers"] = max(int(options.get("resolve_workers", 0)), 12)
-        options["parallel_downloads"] = max(int(options.get("parallel_downloads", 0)), 8)
-        options["hls_workers"] = max(int(options.get("hls_workers", 0)), 8)
-        options["segment_concurrency"] = max(int(options.get("segment_concurrency", 0)), 8)
+        options["resolve_workers"] = max(int_option(options, "resolve_workers", 0), 12)
+        options["parallel_downloads"] = max(int_option(options, "parallel_downloads", 0), 8)
+        options["hls_workers"] = max(int_option(options, "hls_workers", 0), 8)
+        options["segment_concurrency"] = max(int_option(options, "segment_concurrency", 0), 8)
     parallel_urls = getattr(args, "parallel_urls", 4)
     if args.command == "download" and options.get("god"):
         parallel_urls = min(max(parallel_urls, min(len(targets or ()), 16)), 16)

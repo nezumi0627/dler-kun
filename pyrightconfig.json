@@ -1,7 +1,8 @@
 {
-  "include": ["src/dler_kun", "tests"],
+  "include": ["src/dler_kun", "src/dler_kun2", "tests"],
   "exclude": [
     "src/dler_kun/vendor",
+    "src/dler_kun2/vendor",
     "**/__pycache__",
     ".venv"
   ],

@@ -1,125 +1,49 @@
 # AGENTS.md
 
-## Project Mission
+## Project mission
 
-`dler-kun` integrates downloader engines behind one detector, queue, CLI, and configuration surface.
+`dler-kun2` is the successor implementation. The installed CLI command remains `dler-kun` and must resolve to `dler_kun2.presentation.cli.main:main`. Keep the legacy `dler_kun` package only while migration compatibility work requires it; do not route the command back to the archived implementation.
 
-## Code Ownership
+## Ownership and layout
 
-Downloader code migrated from the author's earlier tools is **integrated in-tree** and owned by this project:
+- `src/dler_kun2/domain/`: immutable requests, plans, results, and common errors.
+- `src/dler_kun2/application/`: download, crawl, ranking, and job use cases.
+- `src/dler_kun2/routing/`: the only default route registry and service ownership evidence.
+- `src/dler_kun2/engines/<id>/`: site-specific adapters, parsers, clients, and response validation.
+- `src/dler_kun2/infrastructure/`: shared HTTP, rate limiting, storage, configuration, and durable state.
+- `src/dler_kun2/presentation/cli/`: CLI arguments and user-facing output.
+- `src/dler_kun2/vendor/`: vendored tools. Preserve their provenance and prefer wrapper changes.
+- `src/dler_kun/`: migration-era compatibility code; do not copy new v2 behavior into it by default.
 
-- `src/dler_kun/engines/gofile/gofile_dl/` — GoFile downloader (migrated from the author's earlier tool)
-- `src/dler_kun/engines/85xo/xo_dler/` — 85xo crawler/downloader (migrated from the author's earlier tool)
+## Architecture rules
 
-Only `src/dler_kun/vendor/twimg/download_twitter_media.py` remains vendored (invoked as a subprocess). Treat it as an external tool: prefer wrapper-side changes over editing it.
+- CLI calls application services; engines do not write to CLI output or own output directories.
+- `EngineRegistry` owns routing. Do not route by a domain name alone when the same host may use different backends. Confirm page/API shape before adding aliases.
+- Keep verified aliases in `routing/defaults.py`; keep uncertain aliases quarantined in `routing/registry.py`. A failed or unavailable probe is not proof of service ownership.
+- Each engine returns common plans/results/errors. Unsupported operations use `unsupported_capability`.
+- Shared HTTP calls use `HttpRuntime`; respect per-origin concurrency and `Retry-After`. Never rotate IP, account, token, proxy, or user-agent to evade limits.
+- Output paths must remain under the selected root. Treat filenames, redirects, API data, and media URLs as untrusted.
+- Never expose cookies, passwords, tokens, authorization headers, signed URLs, or secret query parameters in logs, fixtures, CLI output, or persisted metadata.
+- Keep optional imports inside runtime paths so importing `dler_kun2` stays lightweight.
 
-## Architecture Rules
+## Engine routing notes
 
-- CLI calls application services only.
-- `ServiceDetector` owns URL/service detection.
-- **Never route by domain name alone.** Similarly named services can be completely different backends: `gofile.rocks` / `gofile.website` / `gofile.run` are vll/fun800 netdisks (mvfile engine), not gofile.io mirrors; `tweetfile.com` / `tweetplay.com` / `image-share.cc` / `imagedist.com` are also vll. When adding a new domain, verify the actual backend (SPA framework, API host, response shape) before choosing the engine.
-- `DownloaderFactory` owns engine lookup and registration.
-- Each engine implements `IDownloader`.
-- Managers own shared concerns: config, queue, logging, progress, history, retry, proxy, cookies.
-- Engine modules stay isolated under `src/dler_kun/engines/<engine_id>/`.
-- `src/dler_kun/net.py` is the shared curl wrapper (headers, `--interface` binding, DoH resolve, stall detection, proxy). New curl-based downloads should use it instead of building subprocess commands.
-- The `engines/85xo/` package name starts with a digit, so it cannot be imported with normal syntax. Cross-package imports (e.g. mixixxx → `network_media`) go through `importlib.import_module("dler_kun.engines.85xo.xo_dler.network_media")`, matching the existing `engine_85xo.py` pattern.
+- `gofile.io` is the GoFile API engine. `gofile-douga.com` and `gofilelab.com` are accepted only for verified ranking paths.
+- `gofile.run` and Fun800/VLL share hosts are separate from `gofile.io` and use `gofilerun` or `mvfile`.
+- Twimg-like aliases confirmed to use Fun800 are owned by `mvfile`. The legacy Twimg adapter has no default route until a distinct backend is verified.
+- `85xo.com`, `85po.com`, and other aliases in `UNVERIFIED_HOSTS` remain unavailable until live page/API evidence supports registration.
+- Current route/capability inventory is documented in `docs/engines.md` and can be checked with `dler-kun sites --json`.
 
-## Engine Contract
+## Quality gates
 
-Each engine should expose these capabilities when supported:
-
-- `detect(url) -> bool`
-- `download(request) -> DownloadResult`
-- `crawl(request) -> CrawlResult`
-- `ranking(request) -> CrawlResult`（GoFile のみ。専用 RankingResult 型はない）
-- `get_metadata(url) -> Metadata`
-- `login(settings) -> LoginResult`
-
-Unsupported features must return a common unsupported result, not raise raw implementation-specific exceptions to the CLI.
-
-## Error Handling
-
-Catch engine-specific exceptions at the engine adapter boundary and return common errors:
-
-- `unsupported_service`
-- `invalid_request`
-- `not_found`
-- `auth_required`
-- `network_error`
-- `download_failed`
-- `crawl_failed`
-- `dependency_missing`
-
-`src/dler_kun/net.py` raises `CurlDownloadError` / `CurlCancelled`; adapters map these to the common codes above.
-
-## Logging
-
-Use these levels in user-visible logs:
-
-- `[INFO]`
-- `[DEBUG]`
-- `[WARNING]`
-- `[ERROR]`
-- `[SUCCESS]`
-
-Never log secrets, cookies, GoFile tokens, or raw authorization headers.
-
-## Quality
-
-Minimum verification before commit:
+Before committing code changes:
 
 ```powershell
-python -m ruff check src/dler_kun
+python -m ruff check src/dler_kun2 tests
 python -m basedpyright
-python -m dler_kun --help
+python -m pytest -q
+python -m dler_kun2 --help
+python -m dler_kun2 sites --json
 ```
 
-Style is enforced by ruff (`pyproject.toml`); type checking by basedpyright.
-Keep modules import-light: heavy third-party imports stay inside functions
-(e.g. `requests`, browser/CDP helpers) so `import dler_kun` stays fast.
-
-CLI defaults to a short human summary. Use `--json` when a full payload is needed.
-When validating existing projects, prefer their public CLI/API and do not modify their code.
-
-## Related-media download playbook (mvfile / vll / fun800)
-
-The following sites are not GoFile.io mirrors.  They use the mvfile/fun800 land-page
-backend and an entry URL may point to one media item inside a related collection:
-
-- `gofile.bar` uses `https://gofile.bar/api.php?endpoint=/flow/...`.
-- `image-share.cc` and similar `tweetfile.com` / `tweetplay.com` / `imagedist.com`
-  domains use the vll/fun800 API family.
-
-Before downloading one of these URLs:
-
-1. Detect it as `mvfile`; never treat a non-folder root as proof that the URL is a
-   single-file collection.  Resolve `related=True` and inspect the discovered target
-   count first.  The related list can be paginated and can change between runs.
-2. For `gofile.bar`, parse list entries from `data.list[*].netDiskInfo`, and use the
-   root `extraInfo.externalLinks` channel when the root itself is a member of that
-   channel.  The `getInfo` response and the list response have different nesting.
-3. Validate every target's `media_url`.  Values ending in `/null` are unavailable
-   source records, not downloadable files; report them separately instead of claiming
-   the collection is complete.
-4. Signed object-store URLs ending in `.mp4`, `.mov`, `.m4v`, `.webm`, or `.mkv` are
-   direct media downloads.  Do not feed them into the HLS playlist parser; binary
-   content can produce Windows `embedded null character` failures.
-5. Collection members can share the same display name.  Include the short link in
-   the local filename for duplicate names so one item cannot overwrite another.
-6. Run the public CLI with `--god` and a dedicated output directory, then compare the
-   discovered target count with the completed, non-temporary output files.  Keep HLS
-   staging files out of that count.  A success line from the CLI is not enough if
-   some targets were `/null` or if duplicate names collapsed onto one path.
-
-Typical workflow:
-
-```powershell
-python -m dler_kun detect https://gofile.bar/d/cs5AeP
-python -m dler_kun download https://gofile.bar/d/cs5AeP --god -o downloads/gofile-bar-cs5AeP-all
-python -m dler_kun download https://cdn2.image-share.cc/k3KlOo --god -o downloads/image-share-k3KlOo-all
-```
-
-When reporting completion, include: discovered target count, successful output count,
-unavailable `/null` count, and the output directory.  Never expose signed media URLs,
-cookies, or authorization headers in logs or reports.
+Use focused checks while iterating. Do not claim an engine is fully compatible from a route match alone; verify parser behavior, partial failures, and output accounting. Update docs when supported routes, capabilities, command behavior, or configuration changes.

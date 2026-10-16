@@ -10,6 +10,7 @@ from dler_kun2.domain.contracts import CrawlRequest, DownloadRequest, EngineCapa
 from dler_kun2.domain.errors import EngineError, ErrorCode
 from dler_kun2.domain.models import CrawlResult
 from dler_kun2.domain.plans import DownloadPlan
+from dler_kun2.domain.types import int_option
 
 from .parser import content_id, parse_content
 
@@ -102,7 +103,7 @@ class GoFileEngine:
         if normalized and all(is_ranking_source_url(seed) for seed in normalized):
             return await self.ranking(CrawlRequest(self.engine_id, normalized, request.days, request.options))
         try:
-            max_pages = int(request.options.get("max_pages", 100))
+            max_pages = int_option(request.options, "max_pages", 100)
         except (TypeError, ValueError) as exc:
             raise EngineError(ErrorCode.INVALID_REQUEST, "GoFile max_pages must be an integer") from exc
         results = []
@@ -121,7 +122,7 @@ class GoFileEngine:
         requested = discovered = unavailable = 0
         seen: set[str] = set()
         try:
-            limit = int(request.options.get("limit", 60))
+            limit = int_option(request.options, "limit", 60)
         except (TypeError, ValueError) as exc:
             raise EngineError(ErrorCode.INVALID_REQUEST, "GoFile ranking limit must be an integer") from exc
         if not 1 <= limit <= 500:
