@@ -66,11 +66,10 @@ def test_malformed_url_is_invalid_request(url):
     "gofilelab.com", "85xo.com", "85po.com",
     "mvfile.com", "file-photo.com",
     "gofile.host", "gofile.guru", "gofile.name", "mediasplayer.com",
-    "twimg-media.com", "media-twimg.com", "twimg.jp", "video.twimg.jp",
-    "video.twimg-image.com", "video.twimg1.com", "cdn.twimg1.com",
-    "twimg1.com", "twimg-album.com", "file-bio.com", "twfiles.com",
+    "twimg.jp", "video.twimg.jp", "video.twimg1.com",
+    "file-bio.com",
     "gofile.video", "gofile.trade",
-    "cdn1.twimg-media.com", "video.twimg.news",
+    "video.twimg.news",
     "l2e.click",
 ])
 def test_unverified_legacy_alias_is_ambiguous(host):
@@ -83,7 +82,10 @@ def test_every_legacy_host_is_verified_or_quarantined():
     legacy_hosts = set().union(*(set(hosts) for hosts in ServiceDetector().supported_domains().values()))
     assert legacy_hosts == UNVERIFIED_HOSTS | {
         "gofile.io", "gofile-douga.com", "gofile.run", "85po.net", "videy.co", "video.twimg.it.com", "mixi-xxx.cc",
-        "tweetfile.com", "gofile.website", "image-share.cc", "tweetplay.com",
+        "tweetfile.com", "twimg-media.com", "cdn1.twimg-media.com",
+        "video.twimg-image.com", "media-twimg.com", "cdn.twimg1.com",
+        "twimg1.com", "twimg-album.com", "twfiles.com", "gofile.website",
+        "image-share.cc", "tweetplay.com",
         "imagedist.com", "gofile.rocks", "gofile.bar", "gofile.pl",
     }
 
@@ -92,6 +94,17 @@ def test_documented_cdn_alias_routes_to_mvfile():
     from dler_kun2.routing.defaults import build_registry
 
     assert build_registry().resolve("https://cdn2.image-share.cc/k3KlOo").engine_id == "mvfile"
+
+
+@pytest.mark.parametrize("host", [
+    "twimg-media.com", "cdn1.twimg-media.com", "video.twimg-image.com",
+    "media-twimg.com", "cdn.twimg1.com", "twimg1.com", "twimg-album.com",
+    "twfiles.com",
+])
+def test_verified_twimg_frontend_aliases_route_to_mvfile(host):
+    from dler_kun2.routing.defaults import build_registry
+
+    assert build_registry().resolve(f"https://{host}/AbCd1234").engine_id == "mvfile"
 
 
 def test_path_predicate_failure_is_typed_and_redacted_in_cli(capsys, monkeypatch):

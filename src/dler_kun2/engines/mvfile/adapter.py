@@ -17,7 +17,9 @@ from .parser import Entry
 FUN800_HOSTS = frozenset({
     "tweetfile.com", "gofile.website", "image-share.cc", "cdn2.image-share.cc",
     "tweetplay.com", "imagedist.com", "gofile.rocks", "gofile.bar", "gofile.pl",
-    "gofile.run",
+    "gofile.run", "twimg-media.com", "cdn1.twimg-media.com",
+    "video.twimg-image.com", "media-twimg.com", "cdn.twimg1.com",
+    "twimg1.com", "twimg-album.com", "twfiles.com",
 })
 
 

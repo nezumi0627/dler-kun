@@ -18,11 +18,10 @@ from .rules import PathPrefix, RouteRule
 UNVERIFIED_HOSTS = frozenset({
     "gofilelab.com", "85xo.com", "85po.com",
     "mvfile.com", "file-photo.com", "gofile.host", "gofile.guru", "gofile.name", "mediasplayer.com",
-    "twimg-media.com", "media-twimg.com", "twimg.jp", "video.twimg.jp",
-    "video.twimg-image.com", "video.twimg1.com", "cdn.twimg1.com",
-    "twimg1.com", "twimg-album.com", "file-bio.com", "twfiles.com",
+    "twimg.jp", "video.twimg.jp", "video.twimg1.com",
+    "file-bio.com",
     "gofile.video", "gofile.trade",
-    "cdn1.twimg-media.com", "video.twimg.news",
+    "video.twimg.news",
     "l2e.click",
 })
 

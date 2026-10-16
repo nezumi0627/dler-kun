@@ -6,11 +6,11 @@ from dler_kun2.domain.errors import ErrorCode
 from dler_kun2.engines.twimg.adapter import TwimgEngine
 
 
-def test_legacy_twimg_hosts_remain_quarantined() -> None:
+def test_unverified_twimg_hosts_remain_quarantined() -> None:
     from dler_kun2.routing.registry import EngineRegistry, RouteError
 
     try:
-        EngineRegistry().resolve("https://twimg-media.com/item")
+        EngineRegistry().resolve("https://twimg.jp/item")
     except RouteError as exc:
         assert exc.error.code is ErrorCode.AMBIGUOUS_SERVICE
     else:

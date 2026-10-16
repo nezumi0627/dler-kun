@@ -1,4 +1,6 @@
 import asyncio
+import json
+from pathlib import Path
 
 import pytest
 
@@ -15,6 +17,14 @@ def test_different_info_and_list_envelopes():
     rows, total = parse_list({"code": 0, "data": {"list": [{"netDiskInfo": {"shortLink": "EFGH", "originUrl": "https://cdn.test/null"}}], "total": 1}})
     assert total == 1
     assert rows[0].media_url is None
+
+
+def test_live_twimg_invalid_share_envelope_is_normalized_to_not_found():
+    fixture = Path(__file__).parents[1] / "fixtures" / "twimg" / "fun800-invalid-info.json"
+    payload = json.loads(fixture.read_text(encoding="utf-8"))
+    with pytest.raises(EngineError) as error:
+        parse_info(payload, "codex-invalid-share")
+    assert error.value.code is ErrorCode.NOT_FOUND
 
 
 def test_partial_related_collection_and_direct_media():
@@ -99,6 +109,17 @@ def test_share_code_rejects_unverified_hosts_before_api_calls():
     with pytest.raises(EngineError) as error:
         share_code("https://attacker.test/d/ABCD")
     assert error.value.code is ErrorCode.UNSUPPORTED_SERVICE
+
+
+@pytest.mark.parametrize("host", [
+    "twimg-media.com", "cdn1.twimg-media.com", "video.twimg-image.com",
+    "media-twimg.com", "cdn.twimg1.com", "twimg1.com", "twimg-album.com",
+    "twfiles.com",
+])
+def test_verified_twimg_aliases_are_fun800_share_hosts(host):
+    from dler_kun2.engines.mvfile.adapter import share_code
+
+    assert share_code(f"https://{host}/AbCd1234") == (host, "AbCd1234")
 
 
 @pytest.mark.parametrize("base", ["ftp://api.example", "https://user:pass@api.example", "https://api.example:70000"])

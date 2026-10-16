@@ -7,12 +7,18 @@
   URL from that ID and selects `.mov` for nine-character IDs ending in `2`,
   otherwise `.mp4`.
 - Added the Twimg engine contract adapter and a managed subprocess wrapper.
-  Twimg aliases remain quarantined: public GETs to `twimg-media.com` and
-  `tweetfile.com` returned app shells referencing the same JS bundle, but its
-  contents did not expose the API markers or backend identifiers of the
-  vendored tool. `cdn1.twimg-media.com` timed out, and `twimg.jp` did not resolve.
-  Those observations do not establish ownership or disambiguate Twimg from
-  mvfile, so none of these hosts is registered.
+  Verified Twimg-named Fun800 aliases route to `mvfile`, not the legacy Twimg
+  tool: identical public bundles on `tweetfile.com`, `twimg-media.com`,
+  `cdn1.twimg-media.com`, `video.twimg-image.com`, `media-twimg.com`,
+  `cdn.twimg1.com`, `twimg1.com`, `twimg-album.com`, and `twfiles.com` call the
+  same Fun800 API and parse the same `netDiskInfo` shape. A live invalid-ID API
+  response matched the existing Fun800 parser envelope. This validates host
+  ownership and invalid-share handling; a valid-share response remains needed
+  to validate these aliases' media/list payloads end to end.
+- `twimg.jp`, `video.twimg.jp`, `video.twimg1.com`, `file-bio.com`,
+  `gofile.video`, `gofile.trade`, and `video.twimg.news` remain quarantined
+  because no matching API/page contract was established. Full sanitized
+  observations and bundle hashes are in `tests/fixtures/twimg/ownership-observation.md`.
 - The Twimg wrapper captures subprocess output without printing it, supports
   cancellation, discovers only media files, and runs in a temporary directory.
   It publishes only media files to the requested output directory; the vendor's
@@ -30,11 +36,9 @@
   bundle (`assets/index-Ben4zTgk.js`), inspected 2026-10-16. Sanitized contract
   fixture: `tests/fixtures/videy/player-contract.html` and
   `tests/fixtures/videy/player-contract.js`.
-- Twimg public GETs: `https://twimg-media.com/`,
-  `https://tweetfile.com/`, `https://cdn1.twimg-media.com/`, and
-  `https://twimg.jp/`, inspected 2026-10-16. Sanitized shell and decision notes:
-  `tests/fixtures/twimg/public-app-shell.html` and
-  `tests/fixtures/twimg/ownership-observation.md`.
+- Twimg-named public GETs and bundles: observations and hashes in
+  `tests/fixtures/twimg/ownership-observation.md`; sanitized app shell and API
+  invalid-ID fixture in `tests/fixtures/twimg/`.
 - Vendored tool provenance and license: `src/dler_kun2/vendor/twimg/PROVENANCE.md`
   and `src/dler_kun2/vendor/twimg/LICENSE`.
 - Fixture tests cover current Videy ID/extension handling, invalid IDs, route

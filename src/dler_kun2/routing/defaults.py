@@ -42,6 +42,11 @@ def build_registry(registry: EngineRegistry | None = None, *, videy: Engine | No
             "image-share.cc", "www.image-share.cc", "cdn2.image-share.cc", "tweetplay.com", "www.tweetplay.com",
             "imagedist.com", "www.imagedist.com", "gofile.rocks", "www.gofile.rocks",
             "gofile.bar", "www.gofile.bar", "gofile.pl", "www.gofile.pl",
+            "twimg-media.com", "www.twimg-media.com", "cdn1.twimg-media.com",
+            "www.cdn1.twimg-media.com", "video.twimg-image.com", "www.video.twimg-image.com",
+            "media-twimg.com", "www.media-twimg.com", "cdn.twimg1.com", "www.cdn.twimg1.com",
+            "twimg1.com", "www.twimg1.com", "twimg-album.com", "www.twimg-album.com",
+            "twfiles.com", "www.twfiles.com",
         ))],
     )
     registry.register(GofileRunEngine(gofilerun_client), [RouteRule("gofilerun", ("gofile.run", "www.gofile.run"))])
@@ -62,5 +67,5 @@ def build_registry(registry: EngineRegistry | None = None, *, videy: Engine | No
         [RouteRule("mixixxx", ("mixi-xxx.cc", "www.mixi-xxx.cc", "jav-mixi.cc", "www.jav-mixi.cc"))],
     )
     registry.http_runtime = runtime
-    # Twimg aliases remain quarantined until page/API evidence is representative.
+    # Unverified Twimg-like aliases remain quarantined in the registry.
     return registry
