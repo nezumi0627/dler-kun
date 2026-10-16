@@ -393,6 +393,8 @@ def test_crawl_rejects_unknown_service_without_seed(command, service, capsys):
 
 
 def test_gofile_ranking_uses_default_sources_and_configured_limit(capsys, monkeypatch, tmp_path):
+    from dler_kun2.domain.contracts import CrawlRequest
+
     monkeypatch.chdir(tmp_path)
     (tmp_path / "config.json").write_text(
         json.dumps({"gofile": {"ranking_limit": 23, "ranking_seeds": ["new"]}}),
@@ -401,14 +403,15 @@ def test_gofile_ranking_uses_default_sources_and_configured_limit(capsys, monkey
     captured = {}
 
     def run(command, target, _registry, **kwargs):
+        CrawlRequest(target, kwargs["seeds"], kwargs["days"], kwargs["options"])
         captured.update(command=command, target=target, seeds=kwargs["seeds"], options=kwargs["options"])
         return {"accepted": True}
 
     monkeypatch.setattr("dler_kun2.presentation.cli.main.run_command", run)
     assert main(["ranking", "gofile", "--json"]) == 0
-    assert captured["seeds"] == ()
+    assert captured["seeds"] == ("new",)
     assert captured["options"]["limit"] == 23
-    assert captured["options"]["config_seeds"] == ["new"]
+    assert "config_seeds" not in captured["options"]
     capsys.readouterr()
 
 

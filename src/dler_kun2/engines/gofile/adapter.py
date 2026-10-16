@@ -129,17 +129,10 @@ class GoFileEngine:
         http = getattr(self.client, "http", None)
         if http is None:
             raise EngineError(ErrorCode.DEPENDENCY_MISSING, "GoFile ranking HTTP client is unavailable")
-        configured_seeds = request.options.get("config_seeds")
         if request.seeds:
             seeds = request.seeds
-        elif isinstance(configured_seeds, str) and configured_seeds.strip():
-            seeds = (configured_seeds,)
-        elif isinstance(configured_seeds, (list, tuple)) and configured_seeds:
-            seeds = tuple(str(seed) for seed in configured_seeds)
-        elif configured_seeds in (None, [], ()):
-            seeds = DEFAULT_RANKING_SOURCES
         else:
-            raise EngineError(ErrorCode.INVALID_REQUEST, "GoFile ranking_seeds must be a URL or list")
+            seeds = DEFAULT_RANKING_SOURCES
         for seed in normalize_sources(seeds):
             requested += 1
             try:

@@ -165,7 +165,14 @@ def main(argv: list[str] | None = None) -> int:
                     raise EngineError(ErrorCode.INVALID_REQUEST, "GoFile ranking limit is invalid") from exc
                 configured_seeds = gofile_config.get("ranking_seeds")
                 if not seeds and configured_seeds:
-                    options["config_seeds"] = configured_seeds
+                    if isinstance(configured_seeds, str):
+                        seeds = (configured_seeds,)
+                    elif isinstance(configured_seeds, (list, tuple)) and all(
+                        isinstance(seed, str) for seed in configured_seeds
+                    ):
+                        seeds = tuple(configured_seeds)
+                    else:
+                        raise EngineError(ErrorCode.INVALID_REQUEST, "GoFile ranking_seeds must be a URL or list of URLs")
         for key in ("proxy", "user_agent", "cookie", "local_addr"):
             override = getattr(args, key, None)
             if override is not None:
