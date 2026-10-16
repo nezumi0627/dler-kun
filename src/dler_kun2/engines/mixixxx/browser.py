@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -13,6 +14,8 @@ import time
 from pathlib import Path
 from urllib.parse import urljoin, urlsplit
 from urllib.request import Request, urlopen
+
+MAX_PLAYLIST_BYTES = 8 * 1024 * 1024
 
 
 class BrowserCaptureError(RuntimeError):
@@ -162,36 +165,42 @@ def _load_resource(cdp: _Cdp, url: str, frame_id: str, headers: dict[str, str], 
     resource = response.get("resource", {})
     handle = resource.get("stream")
     status = resource.get("httpStatusCode")
+    import base64
+
     chunks = []
-    while handle:
-        chunk = cdp.call("IO.read", {"handle": handle, "size": 65536}, min(timeout, _remaining(deadline)) if deadline is not None else timeout)
-        data = chunk.get("data", "")
-        if chunk.get("base64Encoded"):
-            import base64
-            chunks.append(base64.b64decode(data))
-        else:
-            chunks.append(data.encode())
-        if chunk.get("eof"):
-            break
-    if handle:
-        cdp.call("IO.close", {"handle": handle}, timeout=5)
-    return status if isinstance(status, int) else None, b"".join(chunks)
+    total = 0
+    try:
+        while handle:
+            chunk = cdp.call("IO.read", {"handle": handle, "size": 65536}, min(timeout, _remaining(deadline)) if deadline is not None else timeout)
+            data = chunk.get("data", "")
+            body = base64.b64decode(data) if chunk.get("base64Encoded") else data.encode()
+            total += len(body)
+            if total > MAX_PLAYLIST_BYTES:
+                raise BrowserCaptureError("HLS playlist exceeds the 8 MiB safety limit")
+            chunks.append(body)
+            if chunk.get("eof"):
+                break
+        return status if isinstance(status, int) else None, b"".join(chunks)
+    finally:
+        if handle:
+            cdp.call("IO.close", {"handle": handle}, timeout=5)
 
 
 def _playlist_segments(cdp: _Cdp, playlist: str, frame_id: str, headers: dict[str, str], timeout: float, *, deadline: float | None = None) -> list[str]:
     status, body = _load_resource(cdp, playlist, frame_id, headers, timeout, deadline=deadline)
     if status != 200:
         return []
-    lines = [line.strip() for line in body.decode("utf-8", "replace").splitlines() if line.strip()]
+    text = body.decode("utf-8", "replace")
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
     if any(line.startswith("#EXT-X-KEY") and "METHOD=NONE" not in line for line in lines):
         raise BrowserCaptureError("encrypted HLS playlists are not supported")
-    if "#EXT-X-STREAM-INF" in body.decode("utf-8", "replace"):
+    if "#EXT-X-STREAM-INF" in text:
         variants = []
         bandwidth = 0
         pending = False
         for line in lines:
             if line.startswith("#EXT-X-STREAM-INF"):
-                match = __import__("re").search(r"BANDWIDTH=(\d+)", line)
+                match = re.search(r"BANDWIDTH=(\d+)", line)
                 bandwidth = int(match.group(1)) if match else 0
                 pending = True
             elif pending and not line.startswith("#"):

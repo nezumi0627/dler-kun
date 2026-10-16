@@ -103,6 +103,40 @@ def test_hls_segments_are_written_in_order_without_aggregating_the_playlist(tmp_
     assert [path.read_bytes() for path in paths] == [b"first", b"second"]
 
 
+def test_browser_playlist_response_is_bounded_and_stream_is_closed(monkeypatch):
+    import base64
+    from typing import cast
+
+    import pytest
+
+    import dler_kun2.engines.mixixxx.browser as browser
+    from dler_kun2.engines.mixixxx.browser import (
+        BrowserCaptureError,
+        _Cdp,
+        _load_resource,
+    )
+
+    monkeypatch.setattr(browser, "MAX_PLAYLIST_BYTES", 4)
+
+    class Cdp:
+        closed = False
+
+        def call(self, method, params, timeout=15):
+            if method == "Network.loadNetworkResource":
+                return {"resource": {"stream": "playlist", "httpStatusCode": 200}}
+            if method == "IO.read":
+                return {"data": base64.b64encode(b"12345").decode(), "base64Encoded": True, "eof": True}
+            if method == "IO.close":
+                self.closed = True
+                return {}
+            raise AssertionError(method)
+
+    cdp = Cdp()
+    with pytest.raises(BrowserCaptureError, match="playlist exceeds"):
+        _load_resource(cast(_Cdp, cdp), "https://cdn.test/master.m3u8", "frame", {}, 1)
+    assert cdp.closed
+
+
 def test_cancel_waits_for_browser_worker_before_cleaning_staging(tmp_path, monkeypatch):
     import threading
 
