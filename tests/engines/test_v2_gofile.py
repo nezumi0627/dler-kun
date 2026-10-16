@@ -50,7 +50,7 @@ def test_nested_discovery_preserves_successes_and_unavailable_count():
             raise AssertionError(content_id)
 
     result = asyncio.run(GoFileEngine(Client()).resolve_many(DownloadRequest("https://gofile.io/d/ROOT")))
-    assert result.discovered == 4
+    assert result.discovered == 3
     assert result.unavailable == 1
     assert len(result.plans) == 2
     assert {plan.suggested_name for plan in result.plans} == {"same.mp4"}

@@ -47,7 +47,7 @@ class GoFileEngine:
                 except EngineError as exc:
                     errors.append(exc)
                     break
-                discovered += len(items)
+                discovered += sum(item.kind != "folder" for item in items)
                 for item in items:
                     relative_name = "/".join(part for part in (parent_name, item.name) if part)
                     if item.kind == "folder":
