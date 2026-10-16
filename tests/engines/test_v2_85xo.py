@@ -75,3 +75,60 @@ def test_old_pages_do_not_get_truncated_by_featured_cards():
     result = asyncio.run(Xo85Engine(Client()).crawl(CrawlRequest("85xo", ("https://www.85po.net/ja/latest-updates/",), 20, {"max_pages": 8})))
     assert result.plans == ()
     assert len(fetched) == 2
+
+
+def test_undated_cards_break_old_page_streak_so_later_recent_page_is_kept():
+    pages = {
+        1: '<div class="item"><a href="/ja/v/1.html"><span class="title">old</span><span class="added">30日前</span></a></div>',
+        2: '<div class="item"><a href="/ja/v/2.html"><span class="title">old</span><span class="added">31日前</span></a></div><div class="item"><a href="/ja/v/3.html"><span class="title">unknown date</span></a></div>',
+        3: '<div class="item"><a href="/ja/v/4.html"><span class="title">recent</span><span class="added">1日前</span></a></div>',
+    }
+    fetched = []
+
+    class Response:
+        def __init__(self, html):
+            self.html = html
+
+        async def text(self):
+            return self.html
+
+    class Client:
+        async def request(self, method, url, **kwargs):
+            fetched.append(url)
+            if "/v/4.html" in url:
+                return Response('<a href="https://cdn.test/get_file/recent.mp4?br=800">video</a>')
+            page_number = 1 if "/2/" not in url and "/3/" not in url else 2 if "/2/" in url else 3
+            return Response(pages[page_number])
+
+    result = asyncio.run(Xo85Engine(Client()).crawl(CrawlRequest(
+        "85xo", ("https://www.85po.net/ja/latest-updates/",), 20, {"max_pages": 6}
+    )))
+    assert len(result.plans) == 1
+    assert result.plans[0].metadata["video_id"] == "4"
+    assert any("/3/" in url for url in fetched)
+
+
+def test_include_undated_option_includes_items_without_listing_dates():
+    listing = '<div class="item"><a href="/ja/v/5.html"><span class="title">no date</span></a></div>'
+    fetched = []
+
+    class Response:
+        def __init__(self, html):
+            self.html = html
+
+        async def text(self):
+            return self.html
+
+    class Client:
+        async def request(self, method, url, **kwargs):
+            fetched.append(url)
+            if "/v/5.html" in url:
+                return Response('<a href="https://cdn.test/get_file/undated.mp4?br=800">video</a>')
+            return Response(listing)
+
+    result = asyncio.run(Xo85Engine(Client()).crawl(CrawlRequest(
+        "85xo", ("https://www.85po.net/ja/latest-updates/",), 20,
+        {"max_pages": 1, "include_undated": True},
+    )))
+    assert result.discovered == 1
+    assert result.plans[0].metadata["video_id"] == "5"

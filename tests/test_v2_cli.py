@@ -224,6 +224,39 @@ def test_cli_forwards_supported_crawl_options_and_sources(capsys, monkeypatch):
     assert json.loads(capsys.readouterr().out)["accepted"] is True
 
 
+def test_cli_forwards_include_undated_for_85xo(capsys, monkeypatch):
+    captured = {}
+
+    def run(command, target, _registry, **kwargs):
+        captured.update(command=command, target=target, options=kwargs["options"])
+        return {"accepted": True}
+
+    monkeypatch.setattr("dler_kun2.presentation.cli.main.run_command", run)
+    assert main(["crawl", "85xo", "--include-undated", "--json"]) == 0
+    assert captured["options"]["include_undated"] is True
+    capsys.readouterr()
+
+
+def test_cli_applies_85xo_crawl_defaults_from_config(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "config.json").write_text(
+        '{"85xo":{"days":17,"max_pages":23,"default_seeds":["latest-updates","top-rated"]}}',
+        encoding="utf-8",
+    )
+    captured = {}
+
+    def run(command, target, _registry, **kwargs):
+        captured.update(command=command, target=target, seeds=kwargs["seeds"], days=kwargs["days"], options=kwargs["options"])
+        return {"accepted": True}
+
+    monkeypatch.setattr("dler_kun2.presentation.cli.main.run_command", run)
+    assert main(["crawl", "85xo", "--json"]) == 0
+    assert captured["seeds"] == ("latest-updates", "top-rated")
+    assert captured["days"] == 17
+    assert captured["options"]["max_pages"] == 23
+    capsys.readouterr()
+
+
 def test_cli_restores_single_and_god_flags_with_bounded_concurrency(capsys, monkeypatch):
     captured = {}
 

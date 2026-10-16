@@ -99,7 +99,9 @@ class Xo85Engine:
                     continue
                 dated = [item for item in items if item.published_at is not None]
                 within = [item for item in dated if within_days(item.published_at, days, now)]
-                if items and dated and not within:
+                if request.options.get("include_undated") is True:
+                    within.extend(item for item in items if item.published_at is None)
+                if items and len(dated) == len(items) and dated and not within:
                     old_pages += 1
                 else:
                     old_pages = 0

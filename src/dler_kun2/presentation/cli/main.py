@@ -80,6 +80,7 @@ def main(argv: list[str] | None = None) -> int:
             command.add_argument("--metadata", action="store_true")
         if name == "crawl":
             command.add_argument("--overwrite", action="store_true")
+            command.add_argument("--include-undated", action="store_true")
             command.add_argument("--god", action="store_true", help="increase bounded crawl/download concurrency")
             command.add_argument("--hls-workers", type=int)
             command.add_argument("--download-attempts", type=int)
@@ -125,8 +126,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "download" and target:
         target = target[0]
     seeds = tuple(getattr(args, "seed", ())) + tuple(getattr(args, "source", ()))
-    option_names = ("max_pages", "limit", "password", "segment_concurrency", "hls_workers", "browser_path", "ffmpeg_path", "timeout_seconds", "resolve_workers", "parallel_downloads", "download_attempts", "download_read_timeout", "download_max_time", "discover_workers", "quality", "single", "god", "force", "overwrite", "metadata")
+    option_names = ("max_pages", "limit", "password", "segment_concurrency", "hls_workers", "browser_path", "ffmpeg_path", "timeout_seconds", "resolve_workers", "parallel_downloads", "download_attempts", "download_read_timeout", "download_max_time", "discover_workers", "quality", "single", "include_undated", "god", "force", "overwrite", "metadata")
     options = {name: value for name in option_names if (value := getattr(args, name, None)) not in (None, False)}
+    crawl_days = getattr(args, "days", None)
     if options.get("god"):
         options["resolve_workers"] = max(int(options.get("resolve_workers", 0)), 12)
         options["parallel_downloads"] = max(int(options.get("parallel_downloads", 0)), 8)
@@ -137,6 +139,23 @@ def main(argv: list[str] | None = None) -> int:
         parallel_urls = min(max(parallel_urls, min(len(targets or ()), 16)), 16)
     try:
         config = ConfigStore().as_dict(redact=False)
+        if args.command == "crawl" and target == "85xo":
+            xo_config = config.get("85xo", {})
+            if isinstance(xo_config, dict):
+                try:
+                    options.setdefault("max_pages", int(xo_config.get("max_pages", 50)))
+                    if crawl_days is None:
+                        crawl_days = int(xo_config.get("days", 10))
+                except (TypeError, ValueError) as exc:
+                    raise EngineError(ErrorCode.INVALID_REQUEST, "85xo crawl configuration is invalid") from exc
+                configured_seeds = xo_config.get("default_seeds", xo_config.get("default_seed", ()))
+                if not seeds and configured_seeds:
+                    if isinstance(configured_seeds, str):
+                        seeds = (configured_seeds,)
+                    elif isinstance(configured_seeds, (list, tuple)):
+                        seeds = tuple(str(seed) for seed in configured_seeds)
+                    else:
+                        raise EngineError(ErrorCode.INVALID_REQUEST, "85xo default_seeds must be a URL or list")
         if args.command in {"crawl", "ranking"} and target == "gofile":
             gofile_config = config.get("gofile", {})
             if isinstance(gofile_config, dict):
@@ -170,7 +189,7 @@ def main(argv: list[str] | None = None) -> int:
             )
         except ValueError as exc:
             raise EngineError(ErrorCode.INVALID_REQUEST, "mvfile API base configuration is invalid") from exc
-        value = run_command(args.command, target, registry, output_dir=output_dir, download_items=getattr(args, "download", False), seeds=seeds, days=getattr(args, "days", None), save_config=getattr(args, "save", False), cancel_all=getattr(args, "all", False), targets=targets, parallel_urls=parallel_urls, options=options)
+        value = run_command(args.command, target, registry, output_dir=output_dir, download_items=getattr(args, "download", False), seeds=seeds, days=crawl_days, save_config=getattr(args, "save", False), cancel_all=getattr(args, "all", False), targets=targets, parallel_urls=parallel_urls, options=options)
     except RouteError as exc:
         value = exc.error
     except EngineError as exc:
