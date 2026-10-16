@@ -1,7 +1,10 @@
 import asyncio
 from datetime import datetime, timezone
 
+import pytest
+
 from dler_kun2.domain.contracts import CrawlRequest
+from dler_kun2.domain.errors import EngineError, ErrorCode
 from dler_kun2.engines.xo85.adapter import Xo85Engine
 from dler_kun2.engines.xo85.dates import parse_date, within_days
 from dler_kun2.engines.xo85.listing_parser import parse_listing
@@ -32,6 +35,19 @@ def test_date_parsing_localized_and_window():
 def test_seed_alias_expands_without_accepting_unverified_hosts():
     assert resolve_seeds(("latest-updates",), {}) == ("https://www.85po.net/ja/latest-updates/",)
     assert resolve_seeds((), {})[0].startswith("https://www.85po.net/")
+
+
+@pytest.mark.parametrize("seed", ["latest-updatez", "http://85po.net/latest-updates", "https://85po.net.evil.test/latest-updates", "https://user@85po.net/latest-updates"])
+def test_explicit_invalid_seed_is_rejected_instead_of_crawling_defaults(seed):
+    with pytest.raises(EngineError) as error:
+        resolve_seeds((seed,), {})
+    assert error.value.code is ErrorCode.INVALID_REQUEST
+
+
+def test_invalid_sources_option_is_rejected_instead_of_crawling_defaults():
+    with pytest.raises(EngineError) as error:
+        resolve_seeds((), {"sources": ["latest-updatez"]})
+    assert error.value.code is ErrorCode.INVALID_REQUEST
 
 
 def test_media_parser_selects_best_bitrate_and_redacts_plan():
