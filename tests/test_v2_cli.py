@@ -257,6 +257,13 @@ def test_cli_applies_85xo_crawl_defaults_from_config(tmp_path, monkeypatch, caps
     capsys.readouterr()
 
 
+def test_cli_rejects_non_string_85xo_configured_seeds(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "config.json").write_text('{"85xo":{"default_seeds":[123]}}', encoding="utf-8")
+    assert main(["crawl", "85xo", "--json"]) == 2
+    assert json.loads(capsys.readouterr().out)["error"]["code"] == "invalid_request"
+
+
 def test_cli_restores_single_and_god_flags_with_bounded_concurrency(capsys, monkeypatch):
     captured = {}
 

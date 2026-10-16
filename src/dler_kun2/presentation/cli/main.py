@@ -152,10 +152,12 @@ def main(argv: list[str] | None = None) -> int:
                 if not seeds and configured_seeds:
                     if isinstance(configured_seeds, str):
                         seeds = (configured_seeds,)
-                    elif isinstance(configured_seeds, (list, tuple)):
-                        seeds = tuple(str(seed) for seed in configured_seeds)
+                    elif isinstance(configured_seeds, (list, tuple)) and all(
+                        isinstance(seed, str) for seed in configured_seeds
+                    ):
+                        seeds = tuple(configured_seeds)
                     else:
-                        raise EngineError(ErrorCode.INVALID_REQUEST, "85xo default_seeds must be a URL or list")
+                        raise EngineError(ErrorCode.INVALID_REQUEST, "85xo default_seeds must be a URL or list of URLs")
         if args.command in {"crawl", "ranking"} and target == "gofile":
             gofile_config = config.get("gofile", {})
             if isinstance(gofile_config, dict):
