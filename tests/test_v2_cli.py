@@ -205,6 +205,25 @@ def test_cli_download_accepts_multiple_urls(capsys, monkeypatch):
     assert json.loads(capsys.readouterr().out)["accepted"] == list(captured["targets"])
 
 
+def test_cli_keeps_twimg_parallelism_separate_from_url_parallelism(capsys, monkeypatch):
+    captured = {}
+
+    def run(_command, _target, _registry, **kwargs):
+        captured.update(options=kwargs["options"], parallel_urls=kwargs["parallel_urls"])
+        return {"accepted": True}
+
+    monkeypatch.setattr("dler_kun2.presentation.cli.main.run_command", run)
+    assert main([
+        "download", "https://sample.test/a", "--parallel", "7",
+        "--parallel-urls", "2", "--seg-workers", "5", "--verbose", "--json",
+    ]) == 0
+    assert captured["parallel_urls"] == 2
+    assert captured["options"]["parallel"] == 7
+    assert captured["options"]["seg_workers"] == 5
+    assert captured["options"]["verbose"] is True
+    capsys.readouterr()
+
+
 def test_cli_forwards_supported_crawl_options_and_sources(capsys, monkeypatch):
     captured = {}
 

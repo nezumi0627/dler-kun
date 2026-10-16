@@ -88,6 +88,15 @@ class TwimgEngine:
             command = [sys.executable, str(self.script_path), request.url, "-o", temporary]
             if request.options.get("force"):
                 command.append("--force")
+            if request.options.get("verbose"):
+                command.append("--verbose")
+            for option, flag in (("parallel", "-p"), ("seg_workers", "-w"), ("quality", "-q")):
+                value = request.options.get(option)
+                if value is not None:
+                    command.extend((flag, str(value)))
+            local_addr = request.options.get("local_addr")
+            if isinstance(local_addr, str) and local_addr:
+                command.extend(("--local-addr", local_addr))
             try:
                 process = await self._process_runner(
                     *command,

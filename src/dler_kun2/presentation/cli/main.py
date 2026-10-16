@@ -112,8 +112,10 @@ def main(argv: list[str] | None = None) -> int:
         if name in {"download", "crawl", "ranking"}:
             command.add_argument("-o", "--output-dir", type=Path)
         if name == "download":
-            command.add_argument("--parallel", "--parallel-urls", dest="parallel_urls", type=int, default=4, help="Maximum URLs downloaded concurrently")
-            command.add_argument("--seg-workers", dest="segment_concurrency", type=int)
+            command.add_argument("--parallel", type=int, help="Twimg: internal worker count")
+            command.add_argument("--parallel-urls", type=int, default=4, help="Maximum URLs downloaded concurrently")
+            command.add_argument("--seg-workers", type=int, help="Twimg: segment worker count")
+            command.add_argument("--verbose", action="store_true")
         if name in {"crawl", "ranking"}:
             command.add_argument("--download", action="store_true")
     args = parser.parse_args(argv)
@@ -126,7 +128,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "download" and target:
         target = target[0]
     seeds = tuple(getattr(args, "seed", ())) + tuple(getattr(args, "source", ()))
-    option_names = ("max_pages", "limit", "password", "segment_concurrency", "hls_workers", "browser_path", "ffmpeg_path", "timeout_seconds", "resolve_workers", "parallel_downloads", "download_attempts", "download_read_timeout", "download_max_time", "discover_workers", "quality", "single", "include_undated", "god", "force", "overwrite", "metadata")
+    option_names = ("max_pages", "limit", "password", "segment_concurrency", "seg_workers", "parallel", "verbose", "hls_workers", "browser_path", "ffmpeg_path", "timeout_seconds", "resolve_workers", "parallel_downloads", "download_attempts", "download_read_timeout", "download_max_time", "discover_workers", "quality", "single", "include_undated", "god", "force", "overwrite", "metadata")
     options = {name: value for name in option_names if (value := getattr(args, name, None)) not in (None, False)}
     crawl_days = getattr(args, "days", None)
     if options.get("god"):

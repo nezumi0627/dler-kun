@@ -58,6 +58,39 @@ def test_vendor_invocation_discovers_only_new_media_files(tmp_path: Path, monkey
     assert not tuple((tmp_path / output).rglob("twimg.db"))
 
 
+def test_vendor_options_preserve_legacy_worker_quality_and_interface_flags(tmp_path: Path) -> None:
+    script = tmp_path / "tool.py"
+    script.write_text("# tool", encoding="utf-8")
+    commands = []
+
+    class Process:
+        returncode: int | None = 0
+
+        async def communicate(self) -> tuple[bytes | None, bytes | None]:
+            return b"", b""
+
+        def terminate(self) -> None:
+            raise AssertionError("successful process should not be terminated")
+
+        async def wait(self) -> int:
+            return 0
+
+    async def runner(*command, **_kwargs):
+        commands.append(command)
+        staging = Path(command[command.index("-o") + 1])
+        (staging / "clip.mp4").write_bytes(b"media")
+        return Process()
+
+    request = DownloadRequest("https://example.invalid/clip", {
+        "force": True, "verbose": True, "parallel": 7, "seg_workers": 5,
+        "quality": "1080p", "local_addr": "192.0.2.4",
+    })
+    asyncio.run(TwimgEngine(script_path=script, process_runner=runner).run_vendor(request, tmp_path / "out"))
+    command = commands[0]
+    for flag_value in (("--force",), ("--verbose",), ("-p", "7"), ("-w", "5"), ("-q", "1080p"), ("--local-addr", "192.0.2.4")):
+        assert all(part in command for part in flag_value)
+
+
 def test_missing_vendor_reports_dependency_missing(tmp_path: Path) -> None:
     engine = TwimgEngine(script_path=tmp_path / "absent.py")
     try:
