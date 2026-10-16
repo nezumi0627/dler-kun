@@ -77,19 +77,22 @@ class OriginLimiter:
         except BaseException:
             if acquire_task is not None and not acquire_task.done():
                 acquire_task.cancel()
+            if acquire_task is not None:
+                await asyncio.gather(acquire_task, return_exceptions=True)
             if (
                 not acquired
                 and acquire_task is not None
                 and acquire_task.done()
                 and not acquire_task.cancelled()
             ):
-                acquired = True
+                acquired = acquire_task.exception() is None
             if acquired:
                 semaphore.release()
             raise
         finally:
             if cancel_task is not None:
                 cancel_task.cancel()
+                await asyncio.gather(cancel_task, return_exceptions=True)
 
     def defer(self, url: str, retry_after: str | None) -> float | None:
         seconds = retry_after_seconds(retry_after)

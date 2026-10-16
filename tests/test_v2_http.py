@@ -42,6 +42,45 @@ def test_origin_limiter_releases_slot_when_retry_wait_is_cancelled():
     asyncio.run(scenario())
 
 
+def test_origin_limiter_awaits_internal_task_cleanup_after_cancellation():
+    async def scenario():
+        from typing import cast
+
+        started = asyncio.Event()
+        cleanup_started = asyncio.Event()
+        finish_cleanup = asyncio.Event()
+        cleaned = asyncio.Event()
+
+        class SlowSemaphore:
+            async def acquire(self):
+                started.set()
+                try:
+                    await asyncio.Event().wait()
+                except asyncio.CancelledError:
+                    cleanup_started.set()
+                    await finish_cleanup.wait()
+                    cleaned.set()
+                    raise
+
+            def release(self):
+                pass
+
+        limiter = OriginLimiter()
+        url = "https://example.test/item"
+        limiter._semaphores[limiter.origin(url)] = cast(asyncio.Semaphore, SlowSemaphore())
+        task = asyncio.create_task(limiter.acquire(url, cancel=asyncio.Event()))
+        await started.wait()
+        task.cancel()
+        await cleanup_started.wait()
+        assert not task.done()
+        finish_cleanup.set()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert cleaned.is_set()
+
+    asyncio.run(scenario())
+
+
 @pytest.mark.parametrize("url", ["https://user:pass@example.test/", "https://:pass@example.test/"])
 def test_http_runtime_rejects_any_url_userinfo(url):
     async def scenario():
