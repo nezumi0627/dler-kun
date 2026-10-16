@@ -30,6 +30,25 @@ def test_date_parsing_localized_and_window():
         assert parse_date(text, NOW) == datetime(2026, 10, 10, tzinfo=timezone.utc)
     assert within_days(parse_date("20日前", NOW), 20, NOW)
     assert not within_days(parse_date("21日前", NOW), 20, NOW)
+    assert within_days(NOW, 0, NOW)
+    assert not within_days(NOW.replace(day=15), 0, NOW)
+
+
+def test_zero_day_crawl_is_valid_and_keeps_today_items():
+    listing = '<div class="item"><a href="/ja/v/5.html"><span class="title">today</span><span class="added">今日</span></a></div>'
+
+    class Response:
+        async def text(self):
+            return listing
+
+    class Client:
+        async def request(self, method, url, **kwargs):
+            return Response()
+
+    result = asyncio.run(Xo85Engine(Client()).crawl(CrawlRequest(
+        "85xo", ("https://www.85po.net/ja/latest-updates/",), 0, {"max_pages": 1}
+    )))
+    assert result.discovered == 1
 
 
 def test_seed_alias_expands_without_accepting_unverified_hosts():

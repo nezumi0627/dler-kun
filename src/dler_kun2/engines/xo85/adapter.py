@@ -76,7 +76,7 @@ class Xo85Engine:
         days = request.days if request.days is not None else int(request.options.get("days", 10))
         limit = int(request.options.get("limit", 0))
         workers = int(request.options.get("resolve_workers", 4))
-        if not 1 <= max_pages <= 500 or not 1 <= days <= 3650 or not 1 <= workers <= 16 or limit < 0:
+        if not 1 <= max_pages <= 500 or not 0 <= days <= 3650 or not 1 <= workers <= 16 or limit < 0:
             raise EngineError(ErrorCode.INVALID_REQUEST, "85xo crawl limits are outside supported bounds")
         now = datetime.now(timezone.utc)
         candidates: list[ListingItem] = []
