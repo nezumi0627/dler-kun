@@ -75,7 +75,13 @@ class ServiceDetector:
                 exact=True,
             ),
             DetectionRule(
-                "videy", ("video.twimg.news", "video.twimg.it.com", "videy.co")
+                "videy",
+                (
+                    "video.twimg.news",
+                    "video.twimg.it.com",
+                    "videy.co",
+                    "media.twimg.date",
+                ),
             ),
             DetectionRule("mixixxx", ("mixi-xxx.cc",)),
             DetectionRule("linkex", ("l2e.click",)),

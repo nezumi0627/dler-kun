@@ -10,7 +10,7 @@
 | `linkex` | `l2e.click/i/...` | download、crawl |
 | `mixixxx` | `mixi-xxx.cc`、`jav-mixi.cc` | download、crawl |
 | `mvfile` | 下記のFun800/VLL共有ホスト | download、関連一覧crawl |
-| `videy` | `videy.co`、`video.twimg.it.com` | download |
+| `videy` | `videy.co`、`video.twimg.it.com`、`media.twimg.date` | download |
 
 ### mvfileの登録ホスト
 

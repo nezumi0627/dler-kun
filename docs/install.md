@@ -3,8 +3,8 @@
 ## 開発 checkout から使う
 
 ```powershell
-git clone https://github.com/nezumi0627/dler-kun2.git
-cd dler-kun2
+git clone https://github.com/nezumi0627/dler-kun.git
+cd dler-kun
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -e .
@@ -16,10 +16,10 @@ macOS / Linux では仮想環境を `source .venv/bin/activate` で有効にし�
 ## 開発依存
 
 ```powershell
-python -m pip install -e ".[dev]"
+python -m pip install -e ".[dev,browser]"
 ```
 
-開発依存には Ruff、basedpyright、pytest が含まれます。ブラウザ機能を使う場合は `.[browser]` もインストールしてください。`mixixxx` の HLS 結合には別途 ffmpeg が必要です。
+開発依存とブラウザ機能には Ruff、basedpyright、pytest、websockets が含まれます。`mixixxx` の HLS 結合には別途 ffmpeg が必要です。
 
 ## インストール確認
 

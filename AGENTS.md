@@ -4,6 +4,8 @@
 
 `dler-kun2` is the successor implementation. The installed CLI command remains `dler-kun` and must resolve to `dler_kun2.presentation.cli.main:main`. Keep the legacy `dler_kun` package only while migration compatibility work requires it; do not route the command back to the archived implementation.
 
+Use the checkout selected for the current workspace. Keep machine-specific paths and settings in ignored local configuration files, not in tracked documentation or source defaults.
+
 ## Ownership and layout
 
 - `src/dler_kun2/domain/`: immutable requests, plans, results, and common errors.

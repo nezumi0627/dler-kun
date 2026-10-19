@@ -81,7 +81,7 @@ def test_unverified_legacy_alias_is_ambiguous(host):
 def test_every_legacy_host_is_verified_or_quarantined():
     legacy_hosts = set().union(*(set(hosts) for hosts in ServiceDetector().supported_domains().values()))
     assert legacy_hosts == UNVERIFIED_HOSTS | {
-        "gofile.io", "gofile-douga.com", "gofile.run", "85po.net", "videy.co", "video.twimg.it.com", "mixi-xxx.cc",
+        "gofile.io", "gofile-douga.com", "gofile.run", "85po.net", "videy.co", "video.twimg.it.com", "media.twimg.date", "mixi-xxx.cc",
         "tweetfile.com", "twimg-media.com", "cdn1.twimg-media.com",
         "video.twimg-image.com", "media-twimg.com", "cdn.twimg1.com",
         "twimg1.com", "twimg-album.com", "twfiles.com", "gofile.website",

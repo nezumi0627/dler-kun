@@ -29,7 +29,11 @@ def parse_player(page_url: str, html: str, bundle_excerpt: str) -> tuple[str, st
         parsed = urlsplit(page_url)
     except ValueError as exc:
         raise ValueError("invalid Videy video id") from exc
-    if parsed.hostname in {"video.twimg.it.com", "www.video.twimg.it.com"}:
+    if parsed.hostname in {
+        "video.twimg.it.com",
+        "www.video.twimg.it.com",
+        "media.twimg.date",
+    }:
         match = _ALIAS_PATH.fullmatch(parsed.path)
         if not match or not _VIDEO_ID.fullmatch(match.group(1)):
             raise ValueError("invalid Videy mirror video id")
@@ -37,12 +41,13 @@ def parse_player(page_url: str, html: str, bundle_excerpt: str) -> tuple[str, st
         extension = "mov" if len(video_id) == 9 and video_id.endswith("2") else "mp4"
         source_parser = _VideoSourceParser()
         source_parser.feed(html)
+        cdn_host = "cdn2.videy.co" if parsed.hostname == "media.twimg.date" else "cdn.videy.co"
         for candidate in source_parser.sources:
             try:
                 media = urlsplit(candidate)
             except ValueError:
                 continue
-            if media.scheme == "https" and media.hostname == "cdn.videy.co" and media.path == f"/{video_id}.{extension}":
+            if media.scheme == "https" and media.hostname == cdn_host and media.path == f"/{video_id}.{extension}":
                 return video_id, candidate, extension
         raise ValueError("Videy mirror page did not expose a matching CDN media source")
     if parsed.hostname not in {"videy.co", "www.videy.co"} or parsed.path.rstrip("/") != "/v":

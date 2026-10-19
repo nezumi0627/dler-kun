@@ -1,14 +1,14 @@
 # dler-kun2
 
-`dler-kun2` は `dler-kun` の後継実装です。インストール後に使うコマンド名は従来どおり **`dler-kun`** で、新しい Python 実装を起動します。旧 GitHub リポジトリ `nezumi0627/dler-kun` はアーカイブ済みです。
+`dler-kun2` は旧 `dler-kun` の履歴を引き継いだ後継実装です。公開リポジトリは `nezumi0627/dler-kun` です。インストール後のコマンド名は **`dler-kun`** です。
 
 複数のメディアサービスを、共通の URL 判定・クロール・保存・エラー形式で扱う Python 3.10+ の CLI です。確認できたサービスだけをルート登録し、未確認の別名は誤配信を避けるため拒否します。
 
 ## セットアップ
 
 ```powershell
-git clone https://github.com/nezumi0627/dler-kun2.git
-cd dler-kun2
+git clone https://github.com/nezumi0627/dler-kun.git
+cd dler-kun
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1   # Windows PowerShell
 # source .venv/bin/activate     # macOS / Linux
@@ -19,7 +19,7 @@ dler-kun --help
 開発ツールを含める場合:
 
 ```powershell
-python -m pip install -e ".[dev]"
+python -m pip install -e ".[dev,browser]"
 ```
 
 ## 対応エンジン
@@ -34,7 +34,7 @@ CLI の `dler-kun sites --json` が現在の登録内容です。ホスト名だ
 | `linkex` | `l2e.click/i/...` | ✓ | ✓ | — |
 | `mixixxx` | `mixi-xxx.cc`、`jav-mixi.cc` | ✓ | ✓ | — |
 | `mvfile` | Fun800/VLL API を確認した共有ホスト。詳細は [engines.md](docs/engines.md) | ✓ | ✓ | — |
-| `videy` | `videy.co`、`video.twimg.it.com` | ✓ | — | — |
+| `videy` | `videy.co`、`video.twimg.it.com`、`media.twimg.date` | ✓ | — | — |
 
 `twimg` の旧vendor adapterは保管していますが、現在そのCLIルートは登録していません。確認済みのTwimg風共有ホストはFun800系バックエンドを使うため、`mvfile` に登録しています。未確認のホストは名前だけで振り分けません。
 
@@ -45,11 +45,11 @@ CLI の `dler-kun sites --json` が現在の登録内容です。ホスト名だ
 dler-kun detect https://gofile.io/d/EXAMPLE
 
 # 共有URLのダウンロード
-dler-kun download https://gofile.io/d/EXAMPLE -o downloads
+dler-kun download https://gofile.io/d/EXAMPLE
 
 # クロール結果の確認。--download を付けると保存も実行
 dler-kun crawl 85xo --days 15
-dler-kun crawl 85xo --days 15 --download -o downloads/85xo
+dler-kun crawl 85xo --days 15 --download
 
 # GoFile ランキング
 dler-kun ranking gofile --source douga --download

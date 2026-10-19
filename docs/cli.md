@@ -29,10 +29,10 @@ python -m dler_kun2 [--json] <command> [options]
 dler-kun detect https://gofile.io/d/EXAMPLE
 
 # 1件ダウンロード
-dler-kun download https://gofile.io/d/EXAMPLE -o downloads
+dler-kun download https://gofile.io/d/EXAMPLE
 
 # 85xoを直近15日分クロール。取得だけなら --download を外す
-dler-kun crawl 85xo --days 15 --download -o downloads/85xo
+dler-kun crawl 85xo --days 15 --download
 
 # GoFileランキング
 dler-kun ranking gofile --source douga --download

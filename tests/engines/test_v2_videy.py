@@ -44,6 +44,19 @@ def test_only_verified_videy_backends_are_registered() -> None:
     assert build_registry().resolve("https://video.twimg.it.com/lZwuUiqZ1.mp4").engine_id == "videy"
 
 
+def test_media_twimg_date_resolves_only_its_verified_videy_cdn_source() -> None:
+    page = '<video><source src="https://cdn2.videy.co/yCITNN8W1.mp4" type="video/mp4"></video>'
+    assert parse_player("https://media.twimg.date/yCITNN8W1.mp4", page, "") == (
+        "yCITNN8W1", "https://cdn2.videy.co/yCITNN8W1.mp4", "mp4"
+    )
+    with pytest.raises(ValueError):
+        parse_player("https://media.twimg.date/yCITNN8W1.mp4", '<source src="https://evil.example/yCITNN8W1.mp4">', "")
+
+
+def test_media_twimg_date_routes_to_videy() -> None:
+    assert build_registry().resolve("https://media.twimg.date/yCITNN8W1.mp4").engine_id == "videy"
+
+
 def test_adapter_plan_keeps_media_url_out_of_public_representation() -> None:
     class Response:
         async def text(self):

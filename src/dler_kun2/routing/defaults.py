@@ -79,7 +79,13 @@ def _register_videy(registry: EngineRegistry, runtime: HttpRuntime, engine: Engi
         [
             RouteRule(
                 "videy",
-                ("videy.co", "www.videy.co", "video.twimg.it.com", "www.video.twimg.it.com"),
+                (
+                    "videy.co",
+                    "www.videy.co",
+                    "video.twimg.it.com",
+                    "www.video.twimg.it.com",
+                    "media.twimg.date",
+                ),
             )
         ],
     )

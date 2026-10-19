@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, v2-rewrite]
+    branches: [master, main, v2-rewrite]
   pull_request:
   workflow_dispatch:
 
@@ -20,7 +20,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
       - name: Install project and development tools
-        run: python -m pip install -e ".[dev]" build
+        run: python -m pip install -e ".[dev,browser]" build
       - name: Lint
         run: python -m ruff check src/dler_kun2 tests
       - name: Type check
