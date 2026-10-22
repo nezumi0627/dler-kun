@@ -14,11 +14,11 @@ from urllib.parse import urlencode
 from dler_kun2.domain.errors import EngineError, ErrorCode
 from dler_kun2.infrastructure.http.client import HttpError
 
-from .browser_token import BrowserWebsiteTokenProvider
 from .token_store import GuestTokenStore
 
 API = "https://api.gofile.io"
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/149.0.0.0 Safari/537.36"
+WT_FALLBACK_SALT = "12af056dacea0b"
 
 
 class JsonResponse(Protocol):
@@ -30,46 +30,37 @@ class HttpClient(Protocol):
     async def request(self, method: str, url: str, **kwargs: Any) -> JsonResponse: ...
 
 
-class WebsiteTokenProvider(Protocol):
-    async def generate(self, account_token: str) -> tuple[str, str, str]: ...
-
-
 class GoFileClient:
-    def __init__(self, http: HttpClient, token_store: GuestTokenStore | None = None, *, clock=time.time, website_token_provider: WebsiteTokenProvider | None = None):
+    def __init__(self, http: HttpClient, token_store: GuestTokenStore | None = None, *, clock=time.time):
         self.http = http
         self.token_store = token_store or GuestTokenStore()
         self._clock = clock
         self._token: str | None = os.environ.get("GF_TOKEN") or os.environ.get("GOFILE_TOKEN")
         self._token_lock = asyncio.Lock()
-        self._wt_lock = asyncio.Lock()
-        self._website_token_provider = website_token_provider or BrowserWebsiteTokenProvider()
-        self._cached_wt: tuple[int, str, str, str] | None = None
+        self._wt_salt = os.environ.get("GOFILE_WT_SALT") or WT_FALLBACK_SALT
 
-    async def _website_token(self, account_token: str) -> tuple[str, str, str]:
-        async with self._wt_lock:
-            timeblock = math.floor(self._clock() / 14400)
-            if self._cached_wt and self._cached_wt[0] == timeblock:
-                return self._cached_wt[1:]
-            for _attempt in range(2):
-                before = math.floor(self._clock() / 14400)
-                wt, user_agent, language = await self._website_token_provider.generate(account_token)
-                after = math.floor(self._clock() / 14400)
-                if before == after:
-                    self._cached_wt = (after, wt, user_agent, language)
-                    return wt, user_agent, language
-            raise EngineError(ErrorCode.NETWORK_ERROR, "GoFile signing crossed a time-block boundary")
+    def _website_token(self, account_token: str) -> str:
+        timeblock = str(math.floor(self._clock() / 14400))
+        raw = f"{USER_AGENT}::en-US::{account_token}::{timeblock}::{self._wt_salt}"
+        return hashlib.sha256(raw.encode()).hexdigest()
 
     @staticmethod
-    def _headers(token: str, website_token: str, user_agent: str, language: str) -> dict[str, str]:
+    def _headers(token: str, website_token: str) -> dict[str, str]:
         return {
             "Authorization": f"Bearer {token}",
             "X-Website-Token": website_token,
-            "X-BL": language,
-            "User-Agent": user_agent,
+            "X-BL": "en-US",
+            "User-Agent": USER_AGENT,
             "Accept": "application/json",
-            "Accept-Language": language,
+            "Accept-Language": "en-US,en;q=0.9",
             "Origin": "https://gofile.io",
             "Referer": "https://gofile.io/",
+            "sec-ch-ua": '"Google Chrome";v="149", "Chromium";v="149", "Not)A;Brand";v="24"',
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": '"Windows"',
+            "sec-fetch-dest": "empty",
+            "sec-fetch-mode": "cors",
+            "sec-fetch-site": "same-site",
         }
 
     @staticmethod
@@ -86,7 +77,12 @@ class GoFileClient:
             if self._token:
                 return self._token
             try:
-                response = await self.http.request("POST", f"{API}/accounts", headers={"Accept": "application/json", "Origin": "https://gofile.io", "Referer": "https://gofile.io/", "User-Agent": USER_AGENT})
+                response = await self.http.request(
+                    "POST",
+                    f"{API}/accounts",
+                    headers=self._headers("", self._website_token("")),
+                    json={},
+                )
                 payload = await response.json()
             except HttpError as exc:
                 raise self._check_http_error(exc) from exc
@@ -114,8 +110,7 @@ class GoFileClient:
             params["password"] = hashlib.sha256(password.encode()).hexdigest()
         url = f"{API}/contents/{content_id}?{urlencode(params)}"
         try:
-            wt, user_agent, language = await self._website_token(token)
-            headers = self._headers(token, wt, user_agent, language)
+            headers = self._headers(token, self._website_token(token))
             response = await self.http.request("GET", url, headers=headers)
             payload = await response.json()
         except HttpError as exc:

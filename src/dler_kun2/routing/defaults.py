@@ -14,6 +14,8 @@ from dler_kun2.engines.linkex.client import LinkexClient
 from dler_kun2.engines.mixixxx.adapter import MixixxxEngine
 from dler_kun2.engines.mvfile.adapter import MvfileEngine
 from dler_kun2.engines.mvfile.api import DEFAULT_API, Fun800Client
+from dler_kun2.engines.twixive.adapter import TwixiveEngine
+from dler_kun2.engines.twixive.client import TwixiveClient
 from dler_kun2.engines.videy.adapter import VideyEngine
 from dler_kun2.engines.xo85.adapter import Xo85Engine
 from dler_kun2.infrastructure.http.client import HttpRuntime
@@ -123,6 +125,13 @@ def _register_mixixxx(registry: EngineRegistry, runtime: HttpRuntime) -> None:
     )
 
 
+def _register_twixive(registry: EngineRegistry, runtime: HttpRuntime) -> None:
+    registry.register(
+        TwixiveEngine(TwixiveClient(runtime)),
+        [RouteRule("twixive", ("twixive.net", "www.twixive.net"))],
+    )
+
+
 def build_registry(
     registry: EngineRegistry | None = None,
     *,
@@ -142,6 +151,7 @@ def build_registry(
     _register_xo85(registry, runtime, xo85)
     _register_linkex(registry, runtime)
     _register_mixixxx(registry, runtime)
+    _register_twixive(registry, runtime)
     registry.http_runtime = runtime
     # Twimg's former aliases are verified Fun800 pages and belong to mvfile.
     # Keep the legacy adapter isolated until a distinct public route is proven.

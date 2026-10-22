@@ -14,6 +14,7 @@ _DEFAULTS: dict[str, Any] = {
     "output_dir": "downloads",
     "threads": 3,
     "timeout": 30,
+    "experimental_fallback": True,
     "retry": 2,
     "language": "ja",
     "proxy": "",

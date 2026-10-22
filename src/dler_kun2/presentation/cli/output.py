@@ -14,7 +14,7 @@ def public_payload(value: object) -> dict[str, object]:
     if isinstance(value, CrawlResult):
         return value.to_dict()
     if isinstance(value, DownloadResult):
-        return {"output_paths": [str(path) for path in value.output_paths], "requested": value.requested, "discovered": value.discovered, "completed": value.completed, "unavailable": value.unavailable, "errors": [error.to_dict() for error in value.errors]}
+        return {"output_paths": [str(path) for path in value.output_paths], "requested": value.requested, "discovered": value.discovered, "completed": value.completed, "unavailable": value.unavailable, "errors": [error.to_dict() for error in value.errors], **({"experimental": True} if value.experimental else {})}
     if isinstance(value, dict):
         return value
     raise TypeError("unsupported public payload")
@@ -41,6 +41,10 @@ def emit(value: object, *, json_mode: bool) -> None:
     elif isinstance(value, dict) and "config" in value:
         print("[SUCCESS] configuration saved" if value["saved"] else "[INFO] effective configuration")
     elif isinstance(value, (CrawlResult, DownloadResult)):
-        print(f"[INFO] discovered {value.discovered}, completed {value.completed}, unavailable {value.unavailable}, errors {len(value.errors)}")
+        prefix = "[EXPERIMENTAL] " if isinstance(value, DownloadResult) and value.experimental else ""
+        label = "ERROR" if value.errors and not value.completed else "INFO"
+        print(f"{prefix}[{label}] discovered {value.discovered}, completed {value.completed}, unavailable {value.unavailable}, errors {len(value.errors)}")
+        for error in value.errors:
+            print(f"{prefix}[ERROR] {error.code.value}: {error.message}")
     else:
         print("[INFO] Command completed")

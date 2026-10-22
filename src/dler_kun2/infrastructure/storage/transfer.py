@@ -142,6 +142,9 @@ class TransferService:
                 )
             else:
                 response = await self.runtime.request("GET", plan.media_url)
+                content_type = str(getattr(response, "headers", {}).get("Content-Type", "")).lower()
+                if "text/html" in content_type or "application/xhtml" in content_type:
+                    raise EngineError(ErrorCode.DOWNLOAD_FAILED, "server returned a webpage instead of media")
 
                 async def chunks():
                     async for chunk in response.content.iter_chunked(64 * 1024):
