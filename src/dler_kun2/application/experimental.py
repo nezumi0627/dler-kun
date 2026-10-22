@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 import re
 from html import unescape
 from html.parser import HTMLParser
@@ -41,7 +42,17 @@ class _MediaTags(HTMLParser):
 def _media_url(url: str) -> bool:
     try:
         parsed = urlsplit(url)
-        return parsed.scheme in {"http", "https"} and parsed.hostname is not None and Path(parsed.path.lower()).suffix in _VIDEO_EXTENSIONS
+        host = parsed.hostname
+        if parsed.scheme not in {"http", "https"} or host is None or parsed.username is not None or parsed.password is not None:
+            return False
+        try:
+            if not ipaddress.ip_address(host).is_global:
+                return False
+        except ValueError:
+            normalized_host = host.rstrip(".").lower()
+            if "." not in normalized_host or normalized_host.endswith((".localhost", ".local", ".internal")):
+                return False
+        return Path(parsed.path.lower()).suffix in _VIDEO_EXTENSIONS
     except ValueError:
         return False
 
