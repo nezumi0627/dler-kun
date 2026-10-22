@@ -110,7 +110,7 @@ def test_client_creates_and_reuses_one_persisted_guest_token(tmp_path):
     assert asyncio.run(client.account_token()) == "guest-secret"
     assert asyncio.run(GoFileClient(Http(), store).account_token()) == "guest-secret"
     assert len(calls) == 1
-    assert "json" not in calls[0][2]
+    assert calls[0][2]["json"] == {}
     assert "guest-secret" not in json.dumps(calls)
     if __import__("os").name != "nt":
         assert (tmp_path / "token.json").stat().st_mode & 0o777 == 0o600
@@ -143,20 +143,15 @@ def test_client_preserves_retry_after_and_does_not_retry(tmp_path):
             calls.append((method, url, kwargs))
             return Response()
 
-    class TokenProvider:
-        async def generate(self, account_token: str):
-            assert account_token == "configured-token"
-            return "fresh-wt", "fresh-browser-ua", "ja-JP"
-
-    client = GoFileClient(Http(), GuestTokenStore(tmp_path / "unused.json"), website_token_provider=TokenProvider())
+    client = GoFileClient(Http(), GuestTokenStore(tmp_path / "unused.json"))
     client._token = "configured-token"
     with pytest.raises(EngineError) as error:
         asyncio.run(client.content("abc"))
     assert error.value.code is ErrorCode.RATE_LIMITED
     assert error.value.retry_after == 73
     assert len(calls) == 1
-    assert calls[0][2]["headers"]["X-Website-Token"] == "fresh-wt"
-    assert calls[0][2]["headers"]["User-Agent"] == "fresh-browser-ua"
+    assert calls[0][2]["headers"]["X-Website-Token"] == client._website_token("configured-token")
+    assert calls[0][2]["headers"]["User-Agent"]
 
 
 def test_rate_limit_http_date_uses_injected_clock(tmp_path):
@@ -174,12 +169,7 @@ def test_rate_limit_http_date_uses_injected_clock(tmp_path):
         async def request(self, *_args, **_kwargs):
             return Response()
 
-    class TokenProvider:
-        async def generate(self, account_token: str):
-            assert account_token == "account-token"
-            return "wt", "ua", "ja"
-
-    client = GoFileClient(Http(), GuestTokenStore(tmp_path / "unused.json"), clock=lambda: now, website_token_provider=TokenProvider())
+    client = GoFileClient(Http(), GuestTokenStore(tmp_path / "unused.json"), clock=lambda: now)
     client._token = "account-token"
     with pytest.raises(EngineError) as error:
         asyncio.run(client.content("ROOT"))

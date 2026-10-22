@@ -178,7 +178,7 @@ def test_unsupported_capability_is_typed(tmp_path):
 def test_cli_sites_json_reports_verified_engines(capsys):
     assert main(["sites", "--json"]) == 0
     ids = {item["engine_id"] for item in json.loads(capsys.readouterr().out)["sites"]}
-    assert ids == {"85xo", "gofile", "gofilerun", "linkex", "mixixxx", "mvfile", "videy"}
+    assert ids == {"85xo", "gofile", "gofilerun", "linkex", "mixixxx", "mvfile", "twixive", "videy"}
 
 
 def test_cli_help_subcommand_prints_root_help_without_loading_config(capsys, monkeypatch, tmp_path):
@@ -201,7 +201,7 @@ def test_cli_download_accepts_multiple_urls(capsys, monkeypatch):
     assert captured["target"] == "https://sample.test/a"
     assert captured["targets"] == ("https://sample.test/a", "https://sample.test/b")
     assert captured["parallel_urls"] == 2
-    assert captured["options"] == {"password": "pass", "force": True, "metadata": True}
+    assert captured["options"] == {"password": "pass", "force": True, "metadata": True, "experimental_fallback": True}
     assert json.loads(capsys.readouterr().out)["accepted"] == list(captured["targets"])
 
 
@@ -238,7 +238,7 @@ def test_cli_forwards_supported_crawl_options_and_sources(capsys, monkeypatch):
         "command": "crawl",
         "target": "85xo",
         "seeds": ("top-rated",),
-        "options": {"max_pages": 12, "limit": 30, "resolve_workers": 3},
+        "options": {"max_pages": 12, "limit": 30, "resolve_workers": 3, "experimental_fallback": True},
     }
     assert json.loads(capsys.readouterr().out)["accepted"] is True
 

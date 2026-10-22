@@ -35,6 +35,7 @@ CLI の `dler-kun sites --json` が現在の登録内容です。ホスト名だ
 | `mixixxx` | `mixi-xxx.cc`、`jav-mixi.cc` | ✓ | ✓ | — |
 | `mvfile` | Fun800/VLL API を確認した共有ホスト。詳細は [engines.md](docs/engines.md) | ✓ | ✓ | — |
 | `videy` | `videy.co`、`video.twimg.it.com`、`media.twimg.date` | ✓ | — | — |
+| `twixive` | `twixive.net` のユーザー、ランキング、Reelsページ | ✓ | ✓ | — |
 
 `twimg` の旧vendor adapterは保管していますが、現在そのCLIルートは登録していません。確認済みのTwimg風共有ホストはFun800系バックエンドを使うため、`mvfile` に登録しています。未確認のホストは名前だけで振り分けません。
 
@@ -53,6 +54,12 @@ dler-kun crawl 85xo --days 15 --download
 
 # GoFile ランキング
 dler-kun ranking gofile --source douga --download
+
+# TwiXiveのプロフィール動画をすべて保存
+dler-kun download https://twixive.net/user/ACCOUNT
+
+# TwiXive Reelsからランダムに20件保存
+dler-kun crawl twixive --seed https://twixive.net/reels --limit 20 --download
 
 # 機械処理向け JSON
 dler-kun --json sites

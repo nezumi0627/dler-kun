@@ -2,6 +2,8 @@
 
 この表はコード上で登録しているrouteです。`dler-kun sites --json` を実行すると、その環境の実際の登録一覧を確認できます。外部サイトの仕様変更や地域差による到達性までは保証しません。
 
+未登録ホストへの `download` は実験機能が既定で有効です。`experimental_fallback` を `false` にすると無効になります。有効時は登録ルートで未対応となったURLに限り、直リンクまたは公開HTMLから動画URLを推定して最初の候補をダウンロードします。通常のサービス対応一覧には加えず、CLI結果には `[EXPERIMENTAL]` を付けます。認証やDRMの解除は行いません。
+
 | Engine | 現在のroute | 主な機能 |
 |---|---|---|
 | `gofile` | `gofile.io`; `gofile-douga.com` と `gofilelab.com` のランキング判定対象URL | download、crawl、ranking |
@@ -11,6 +13,7 @@
 | `mixixxx` | `mixi-xxx.cc`、`jav-mixi.cc` | download、crawl |
 | `mvfile` | 下記のFun800/VLL共有ホスト | download、関連一覧crawl |
 | `videy` | `videy.co`、`video.twimg.it.com`、`media.twimg.date` | download |
+| `twixive` | `twixive.net` | user video download/crawl、24時間/3日間/7日間ランキングcrawl、Reelsランダムcrawl |
 
 ### mvfileの登録ホスト
 
@@ -39,8 +42,21 @@
 - `l2e.click` は `/i/` の共有パスを条件にします。
 - `twimg-media.com`、`cdn1.twimg-media.com`、`video.twimg-image.com`、`media-twimg.com`、`cdn.twimg1.com`、`twimg1.com`、`twimg-album.com`、`twfiles.com` は確認済みFun800系のため `mvfile` が処理します。Twimg風の名称だけでX公式CDNとは判断しません。
 - `twimg` vendor adapterは保管していますが、現在のCLI routeには登録していません。
+- TwiXiveは公開プロフィール動画API、ランキングAPI、およびReelsが使用するトレンド動画APIを利用します。Reelsは取得した最大500件から指定件数をランダム選択します。
 - `85xo.com`、`85po.com`、`twimg.jp`、その他の未確認別名は `UNVERIFIED_HOSTS` に隔離し、対応済みとは表示しません。
 
 ## 能力
 
 対応していない機能は `unsupported_capability` を返します。ログイン機能は現行CLIで提供していません。エンジン単位の能力値は `sites --json` の `capabilities` を参照してください。
+
+### TwiXive crawl
+
+```powershell
+dler-kun crawl twixive --seed https://twixive.net/user/ACCOUNT --download
+dler-kun crawl twixive --seed https://twixive.net/ranking/24h --download
+dler-kun crawl twixive --seed https://twixive.net/ranking/3days --download
+dler-kun crawl twixive --seed https://twixive.net/ranking/7days --download
+dler-kun crawl twixive --seed https://twixive.net/reels --limit 20 --download
+```
+
+プロフィール動画はページ末尾まで取得します（`--max-pages`で上限を指定可能）。ランキングは最大500件、Reelsの`--limit`は省略時20件です。

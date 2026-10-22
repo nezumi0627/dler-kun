@@ -81,7 +81,15 @@ async def transfer_plans(
 
 
 async def download(url: str, output_dir: Path, registry: EngineRegistry, transfer: TransferService | None = None, options: EngineOptions | None = None) -> DownloadResult:
-    engine = registry.resolve(url)
+    try:
+        engine = registry.resolve(url)
+    except RouteError as exc:
+        settings = options or {}
+        if exc.error.code != ErrorCode.UNSUPPORTED_SERVICE or settings.get("experimental_fallback", True) is not True:
+            raise
+        from .experimental import experimental_download
+
+        return await experimental_download(url, output_dir, registry, transfer, settings)
     if not engine.capabilities.download:
         raise RouteError(EngineError(ErrorCode.UNSUPPORTED_CAPABILITY, "download is unsupported"))
     request = DownloadRequest(url, options or {})
@@ -147,4 +155,5 @@ async def download_many(
         completed=sum(result.completed for result in successful),
         unavailable=sum(result.unavailable for result in successful),
         errors=tuple(error for result in successful for error in result.errors) + tuple(errors),
+        experimental=any(result.experimental for result in successful),
     )

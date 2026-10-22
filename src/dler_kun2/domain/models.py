@@ -32,6 +32,7 @@ class DownloadResult:
     completed: int = 0
     unavailable: int = 0
     errors: tuple[EngineError, ...] = ()
+    experimental: bool = False
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "output_paths", tuple(self.output_paths))

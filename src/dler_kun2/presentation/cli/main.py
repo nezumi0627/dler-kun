@@ -154,6 +154,7 @@ def main(argv: list[str] | None = None) -> int:
         parallel_urls = min(max(parallel_urls, min(len(targets or ()), 16)), 16)
     try:
         config = ConfigStore().as_dict(redact=False)
+        options["experimental_fallback"] = config.get("experimental_fallback", True) is True
         if args.command == "crawl" and target == "85xo":
             xo_config = config.get("85xo", {})
             if isinstance(xo_config, dict):
